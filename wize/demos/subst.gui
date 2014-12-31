@@ -1,0 +1,40 @@
+#!/usr/bin/env wize
+
+script {
+  # Demo using subst for a dynamic gui switched on number of args.
+  variable pc
+  switch [llength $argv] {
+    1 {
+      set pc(attr) "-bg blue"
+      set pc(status) Spinbox
+      set pc(toolbar) {{Frame + -pos _ -subpos l} { Button Stop Button Start } }
+      set pc(tstyle) { style { Button {-bg LightBlue}} }
+      set pc(numinp) 6
+    }
+    default {
+      set pc(attr) "-bg red"
+      set pc(status) Entry
+      set pc(toolbar) { Button Exit}
+      set pc(tstyle) {}
+      set pc(numinp) 2
+    }
+  }
+}
+
+{subst -} {
+    style { Text { $pc(attr) } }
+}
+
+{Toplevel +} {
+    subst { $pc(tstyle) }
+    subst { $pc(toolbar) }
+    Text {}
+    subst { {$pc(status) - -pos _} {} } 
+    subst {
+	{grid + -colattr { {} {-pos _} } -pos * } {
+	    {row +} { Label Amount Label Account }
+		[*nrepeat "{row +} { {Entry - -id sum%N -type Double} {} {Spinbox - -id acct%N} {} }\n" $pc(numinp)]
+	}
+    }
+}
+

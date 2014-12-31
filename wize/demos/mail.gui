@@ -1,0 +1,931 @@
+#!/usr/bin/env wize
+
+{options - -namespace mail -apps address.gui } {}
+
+script {
+    # Simple mail user interface.
+    # TODO: speedup by using a single tree for all folders.
+    #
+    # BSD Copyright 2007 - Peter MacDonald   (See http://pdqi.com/)
+    # RCS: @(#) $Id: mail.gui,v 1.12 2010/04/28 16:06:55 pcmacdon Exp $
+
+    declare pc Array
+    *array pc {
+        id:email user@host.com
+        sig "Regards, "
+        snd:port 543
+        rcv:port 25
+        rcv:leave 1
+    }
+    
+    array set _ {
+        cur:dir {}   lastmsgid {}   mail:dir ~/Mail
+        show:msg:cnt False    cache:idx False
+        timefmt {%y-%m-%d %T}
+        std:folders {inbox outbox sent-mail trash drafts}
+        keep {Subject Date From To Message-Id}
+        
+    }
+
+
+    namespace eval Ops {
+        
+        Mod upvars _
+        
+        proc Mmove {_} {
+            .Warn "MMOVE"
+            upvar $_ {}
+            Tk::gui::create {
+                {TreeView - -id tt} {}
+            }
+        }
+        proc Delete {_} {
+            .Warn "MDEL"
+        }
+        
+        proc Wrap {_ w} {
+            set wrap [Text cget $w -wrap]
+            if {$wrap == "none"} {
+                Text conf $w -wrap word
+            } else {
+                Text conf $w -wrap none
+            }
+        }
+        
+        proc ParseHdr {_ hdata} {
+            set lst {}
+            foreach dat [split $hdata \n] {
+                if {$dat == {}} break
+                if {[string is space [string index $dat 0]]} {
+                    set ldat [lindex $lst end]
+                    append ldat \n $dat
+                    set lst [lreplace $lst end end $ldat]
+                    continue
+                }
+                if {[regexp {^([-a-zA-Z0-9]+):[\s\t]*(.*)$} $dat NA name rest]} {
+                    lappend lst $name $rest
+                } else {
+                    if {$lst == {} && [string match From* $dat]} {
+                    } else {
+                        error "unparsable header: $dat"
+                    }
+                }
+            }
+            return $lst
+        }
+    
+        proc IndexFile {_ file} {
+            set fp [open $file]
+            set lst {}
+            while {[gets $fp dat] > 0} {
+                if {$dat == {}} break
+                if {[string is space [string index $dat 0]] && [llength $lst]} {
+                    set ldat [lindex $lst end]
+                    append ldat \n $dat
+                    set lst [lreplace $lst end end $ldat]
+                    continue
+                }
+                if {[regexp {^([-a-zA-Z0-9_]+):[\s\t]*(.*)$} $dat NA name rest]} {
+                    lappend lst $name $rest
+                } else {
+                    if {$lst == {} && [string match From* $dat]} {
+                    } else {
+                        error "unparsable header: $dat"
+                    }
+                }
+            }
+            close $fp
+            return $lst
+        }
+        
+        proc QPDecode {str} {
+            # Decode quoted printable.
+            regsub -all -- {[ \t]+\n} $str "\n" str
+            set string [string trimright $str " \t"]
+            set string [string map [list "\\" "\\\\" "=\n" ""] $str]
+            regsub -all -nocase {=([a-f0-9][a-f0-9])} $str {\\u00\1} str
+            return [subst -novariables -nocommands $str]
+        }
+
+
+        proc DecodeIt {str} {
+            # Decode quoted or b64.
+            if {![regexp -- {^=\?([^?]+)\?(.)\?([^?]*)\?=$} $str NA cs meth enc]} {
+                return $str
+            }
+            switch -- [string tolower $meth] {
+                b { return [wiz::b64decode $enc] }
+                q { return [QPDecode $enc] }
+            }
+            return $str
+        }
+
+    
+        proc IndexDir {_ dir} {
+            # Create index of directory files.
+            upvar $_ {}
+            set ilst {}
+            foreach i [lsort -dictionary -decreasing [glob -nocomplain -types f $dir/cur/*]] {
+                if {[catch {IndexFile $_ $i} d]} {
+                    tclLog "IndexFile failure($i): $d"
+                    continue
+                }
+                set lst {_readstatus_ 1}
+                foreach {vnam vval} $d {
+                    if {$(keep) != {} && [lsearch $(keep) $vnam] < 0} continue
+                    if {[catch {
+                        if {[set nns [string first =? $vval]]>=0 &&
+                            [set nne [string first ?= $vval]]>=0 &&
+                            $nns < $nne} {
+                            set nss [string range $vval $nns [incr nne]]
+                            set nss [DecodeIt $nss]
+                            if {$nss != {}} {
+                                set vval [string replace $vval $nns $nne $nss]
+                            }
+                        }
+                        switch -- $vnam {
+                            From {
+                                set vval [string trim $vval]
+                                if {[regexp {^"([^"]+)"} $vval NA nfr]} {
+                                    set vval $nfr
+                                } elseif {[regexp {(.*)<([^>]+)>$} $vval NA npre nfr]} {
+                                    if {[string trim $npre] == {}} {
+                                        set vval $nfr
+                                    } else {
+                                        set vval $npre
+                                    }
+                                }
+                            }
+                            Date {
+                                set tz {}
+                                if {[set nn [string first \n $vval]]>0} {
+                                    set vval [string range $vval 0 [incr nn -1]]
+                                }
+                                if {[set nn [string first \( $vval]]>0} {
+                                    set tz [string trim [string range $vval $nn end]]
+                                    set tz [string trim $tz ()]
+                                    set vval [string range $vval 0 [incr nn -1]]
+                                }
+                                set vval [string trim $vval]
+                        
+                                catch {
+                                    if {[regexp {^(.*) ([-+][0-9]{4})$} $vval NA dpre dpost]} {
+                                        set ndate [clock scan $dpre -timezone $dpost]
+                                    } elseif {$tz != {}
+                                    && [catch {clock scan $dpre -timezone $tz} tz]} {
+                                        set ndate [clock scan $dpre]
+                                    }
+                                    set vval $ndate
+                                }
+                            }
+                            Subject {
+                                if {[set nn [string first \n $vval]]>0} {
+                                    set ql [split [string trim $vval] \n]
+                                    set vval [lindex $ql 0]
+                                }
+                            }
+                        }
+                    } erc]} {
+                        .Warn "HDR ERROR: $erc\n$::errorInfo"
+                    }
+                    lappend lst $vnam $vval
+                }
+                lappend ilst [file tail $i] $lst
+            }
+            return $ilst
+        }
+        
+        proc GetFolderIdx {_ dir} {
+            # Get fixed-up header fields from the index.
+            upvar $_ {}
+            if {[info exists (fidx:$dir)]} {
+                return $(fidx:$dir)
+            }
+            set idir $(mail:dir)/$dir
+            if {![file exists $idir]} return
+            set ifn $idir/.msgidx.tld
+            set d {}
+            if {[file exists $ifn]} {
+                set d [*fread $ifn]
+            }
+            if {$d == {}} {
+                set d [IndexDir $_ $idir]
+                *fwrite $ifn $d
+            }
+            if {$(cache:idx)} {
+                set (fidx:$dir) $d
+            }
+            return $d
+        }
+        
+        proc FillMsg {_ ind} {
+            # Fill the message window.
+            upvar $_ {}
+            set m $(w,msglist)
+            set t $(w,msg)
+            set dir $(cur:dir)
+            set d $(msg,list,$dir)
+            set fn [TreeView get $m $ind]
+            set ff $(mail:dir)/$dir/cur/$fn
+            if {![file exists $ff]} return
+            set fp [open $ff]
+            set dat [read $fp]
+            close $fp
+            Text conf $t -state normal
+            Text delete $t 1.0 end
+            if {[set nn [string first \n\n $dat]] < 0} {
+                Text insert $t end $dat
+                Text conf $t -state disabled
+                return
+            }
+            set vals [ParseHdr $_ [string range $dat 0 [expr {$nn-1}]]]
+            array set q {Subject {} From {} Date {} To {} Content-Transfer-Encoding {}}
+            array set q $vals
+            set q(To) [string map [list \n { }] $q(To)]
+            set ba { bmail btitle btabs btext}
+            set q(Subject) [DecodeIt $q(Subject)]
+            Text insert $t end \
+                "\t$q(Subject)\n" {btabs bsubject btext} \
+                "\tFrom:\t " $ba "$q(From)\n" {bmail baddr btext} \
+                "\tTo:\t " $ba "$q(To)\n" {bmail baddr btext} \
+                "\tDate:\t " $ba "$q(Date)\n" {bmail btext}
+        
+            set tdat [string range $dat [expr {$nn+1}] end]
+            switch -- $q(Content-Transfer-Encoding) {
+                quoted-printable {
+                    set tdat [QPDecode $tdat]
+                }
+                base64 {
+                    set tdat [wiz::b64decode $tdat]
+                }
+            }
+            Text insert $t end $tdat btext
+            Text conf $t -state disabled
+            after 200 [list focus $t]
+        }
+        
+        proc OpenMsg {_ ind} {
+            # View new item in msglist.
+            upvar $_ {}
+            set t [blt::tv::SetFocus $(w,msglist) $ind]
+            if {$t != {}} {
+                FillMsg $_ $t
+            }
+        }
+         
+        proc FillMsgList {_ dir {actind 0}} {
+            # Fill the message list.
+            upvar $_ {}
+            if {$(cur:dir) == $dir} return
+            set (lastmsgid) {}
+            set m $(w,msglist)
+            TreeView delete $m all
+            set d [GetFolderIdx $_ $dir]
+            set (msg,list,$dir) $d
+            set (cur:dir) $dir
+            set cnt -1
+            set sst unread
+            set aind {}
+
+            foreach {nam vals} $d {
+                if {![file exists $(mail:dir)/$dir/cur/$nam]} {
+                    #tclLog "Missing file: $dir/cur/$nam"
+                    continue
+                }
+                if {[incr cnt] == 30} { update }
+                array unset q
+                array set q {Subject {} From {} Date {}}
+                array set q $vals
+                if {$q(Subject) == {}} { set q(Subject) {No Subject} }
+                if {$q(Date) == {}} continue
+                set dat [list From $q(From) Date $q(Date)]
+
+                set t [$m insert end $nam -label $q(Subject) -data $dat -style $sst]
+                set sst {}
+                if {$cnt == $actind} {
+                    TreeView entry activate $m $t
+                    TreeView selection set $m $t
+                    TreeView see $m $t
+                    set aind $t
+                    FillMsg $_ $t
+                    update
+                }
+            }
+            if {$aind != {}} {
+                TreeView see $m $aind
+            }
+            set (v,status) "Loaded [llength $d] messages"
+        }
+        
+        proc FillFolders {_} {
+            # Fill folders Tree.
+            upvar $_ {}
+            set f $(w,folders)
+            set fb $(mail:dir)
+            set sublab {}
+            set sl [llength $(std:folders)]
+            set flst [lsort -dictionary [glob -nocomplain -types d -directory $fb -tails *]]
+            foreach fn [concat $(std:folders) $flst] {
+                set ft [file isdirectory $fb/.$fn.directory]
+                if {[incr cnt] >= $sl && [lsearch $(std:folders) $fn]>=0} continue
+                set i $fb/$fn
+                if {$(show:msg:cnt)} {
+                    set ls [llength [glob -nocomplain -types f $i/cur/*]]
+                    set sublab "($ls)"
+                }
+                if {[catch { TreeView insert $f end [list $fn] -forcetree $ft  -sublabel $sublab } erc]} {
+                    .Warn "Failure folder: $erc"
+                }
+            }
+        }
+        
+        proc Busy {_} {
+            upvar $_ {}
+            busy hold $(w,.)
+            update
+            after idle [list busy release $(w,.) ]
+        }
+        
+        proc MsglistOpen {_ {clear 0}} {
+            upvar $_ {}
+            set m $(w,msglist)
+            set id [TreeView index $m focus]
+            if {$id == {}} return
+            if {$id == $(lastmsgid)} {
+                return
+            }
+            set (lastmsgid) $id
+            if {$clear} {
+                TreeView entry activate $m $id
+                TreeView selection clearall $m
+                TreeView selection set $m $id
+            }
+            TreeView see $m $id
+            Busy $_
+            FillMsg $_ $id
+        }
+        
+        proc FolderOpen {_} {
+            upvar $_ {}
+            Busy $_
+            set f $(w,folders)
+            set id [TreeView index $f focus]
+            if {$id == {}} return
+            TreeView entry activate $f $id
+            TreeView selection clearall $f
+            TreeView selection set $f $id
+            TreeView see $f $id
+            set nam [TreeView get $f $id]
+            set tim [time {FillMsgList $_ $nam}]
+            .Warn "FolderOpen: $tim"
+        }
+    }
+    
+    proc Notify {_ msg args} {
+        upvar $_ {}
+        eval [list tk_messageBox -message $msg -parent $(w,.)] $args
+    }
+    
+    namespace eval Move {
+        
+        Mod upvars _
+        Mod uses ..
+        
+        proc Start {_ w} {
+            upvar $_ {}
+            set f [Tk::find $(w,.) folders]
+            TreeView conf $w -tree [TreeView cget $f -tree]
+
+        }
+        proc Ok {_} {
+            upvar $_ {}
+            set s $(w,movedst)
+            set cs [TreeView curselection $s]
+            if {$cs == {}} {
+                Notify $_ "Must pick destination folder"
+                return
+            }
+            set fn [TreeView get $s -full $cs]
+            set m $(w,msglist)
+            foreach i [TreeView curselection $m] {
+                .Warn "TT($fn): $i [$m entry cget $i -label]"
+            }
+            Tk::gui dialogclose $_
+        }
+        
+        proc Cancel {_} {
+            upvar $_ {}
+            Tk::gui dialogclose $_
+        }
+    }
+    
+    proc DateFmt {_ str} {
+        upvar $_ {}
+        return [clock format $str -format $(timefmt)]
+    }
+    variable Opts {
+        {-abc 0 }
+        
+    }
+
+    proc Main {_ args} {
+        upvar $_ {}
+        #Mod debug -1 ::
+        set f $(w,folders)
+        set m $(w,msglist)
+        set t $(w,msg)
+        TreeView column conf $f 0 -title Folders -command {blt::tv::SortTree %W %C}
+        TreeView column conf $f 0 -command {blt::tv::SortColumn %W %C}
+        TreeView conf $f -tree [tree create] -allowduplicates 1
+        TreeView conf $m -flat 1 -showfull 0 -selectmode multiple
+        styles item $f column 0
+        styles item $m column 0
+        TreeView column conf $m 0 -command {blt::tv::SortColumn %W %C}
+        foreach i { From Date} {
+            TreeView column insert $m end $i -command {blt::tv::SortColumn %W %C}
+            styles item $m column $i
+        }
+        Text conf $t -state disabled
+        Ops::FillFolders $_
+        set c [TreeView index $f top]
+        TreeView entry activate $f $c
+        TreeView selection set $f $c
+        TreeView see $f $c
+        set folder [TreeView get $f $c]
+        after idle [list $_ Ops::FillMsgList $folder]
+    }
+    
+    proc GetMsg {_} {
+    }
+    
+    proc GotAddr {_ _g wid addr} {
+        upvar $_ {}
+        upvar $_g g
+        upvar $g(-object) o
+        #.Warn "_g=$_g, -object=$g(-object)"
+        #.Warn "EE, $addr: [lsort [array names o w*]]"
+        set e $g(w,$wid)
+        if {[string trim [Entry get $e]] != {}} {
+            set addr ", $addr"
+        }
+        Entry insert $e end $addr
+        after idle [list focus $e]
+    }
+    
+    proc GetAddress {_ lbl} {
+        upvar $_ {}
+        set g $(gui,cur)
+        [namespace parent]::address::new -esc 0 -command [list $_ GotAddr $g $lbl] -object $g
+    }
+    
+    namespace eval Pop {
+        
+        Mod upvars _ pp
+        Mod uses ..
+        
+        proc GetPass {_} {
+            return [Tk::getInput -title "Get Pass" -text "Enter Mail Password" -show *]
+        }
+        
+        set _(mail:server) pdqi.com
+        set _(mail:port) 587
+        set _(mail:addr) peter@pdqi.com
+        set _(mail:server) shawmail.gv.shawcable.net
+        set _(mail:port) 25
+        set _(mail:userid) peter
+        set _(mail:userid) {}
+        set _(mail:password) {}
+        
+        proc pop {cmd args} {
+            return [eval pop3::cmd $args]
+        }
+        
+        proc SendMsg {_ str subj to } {
+            upvar $_ {}
+            package require smtp
+            package require mime
+            #NOWARN:
+            set msg [mime::initialize -canonical text/plain -string $str]
+
+            set rc [catch { smtp::sendmessage $msg \
+                -header [list Subject $subj] \
+                -header [list From $(mail:addr)] \
+                -header [list To $to] \
+                -servers $(mail:server) -ports $(mail:port) \
+                -username $(mail:userid) \
+                -password $(mail:password) } rv]
+            mime::finalize $msg
+            return -code $rc $rv
+        }
+        
+        proc MsgFilter {_ args} {
+        }
+        
+        proc MsgAdd {_ args} {
+        }
+        
+        proc GetMsg {_} {
+            # Get messages from pop server
+            upvar $_ {}
+            variable pp
+            variable pmsg
+            package require pop3
+            if {$pp(mail:email)=={}} {
+                Notify $_ "You must set email id first"
+                return 0
+            }
+            set user [lindex [split $pp(mail:email) @] 0]
+            if {$pp(mail:password) != {}} {
+                set pmsg(passwd) $pp(mail:password)
+                #set pmsg(passwd) [base64decode $pp(mail:password)]
+            }
+            if {![info exists pmsg(passwd)]} {
+                set ret [GetPass $_]
+                if {$ret=={}} {
+                    return 0
+                }
+                set pmsg(passwd) [lindex [split $ret :] 1]
+                update idletasks
+            }
+            #if {[set servaddr [dnsaddr $pp(mail:server) dstat]] == {}} {
+            #    set servaddr $pp(mail:server)
+            #}
+            set servaddr $pp(mail:server)
+            #.Warn "pop3::open $servaddr $pp(mail:email) $pmsg(passwd) $pp(mail:popport)"
+            if {[catch {pop open $pp(mail:server) $user $pmsg(passwd) $pp(mail:popport)} p]} {
+                Notify $_ "Can not connect to pop server::\n$p"
+                if {[regexp -nocase password $p]} {
+                    unset pmsg(passwd)
+                }
+                return 0
+            }
+            set stat [pop status $p]
+            foreach {num siz} $stat {
+                break
+            }
+            set n $num
+            set filt 0
+            while {$n>=1} {
+                #.Warn "pop3::retrieve $p $n $n"
+                set (v,status) "Getting message $n of $num"
+                update idletasks
+                if {[catch { pop retrieve $p $n $n } rc]} {
+                    Notify $_ "Error talking to Pop server:: $rc"
+                    return [expr {$n-1}]
+                }
+                if {$pp(mail:filter) && [set ffld [MsgFilter $_ [lindex $rc 0]]] != {}} {
+                    set (v,status) "Filtered SPAM message $n"
+                    update idletasks
+                    MsgAdd $v $ffld [lindex $rc 0]
+                    incr filt
+                    incr n -1
+                    continue
+                }
+                set (v,status) "Got message $n"
+                update idletasks
+                MsgAdd $v $pmsg(Inbox) [lindex $rc 0]
+                if {$rc == {}} { 
+                    break
+                }
+                incr n -1
+            }
+            if {!$pp(mail:popsrvlv)} {
+                pop delete $p 1 $num
+            }
+            pop close $p
+            return [list $num $filt]
+        }
+    }
+    
+    namespace eval Config {
+        
+        Mod upvars _
+        Mod uses ..
+        
+        proc Ok {_} {
+            upvar $_ {}
+            Notify $_ "Updated config"
+            Tk::gui dialogclose $_
+        }
+        
+        proc Cancel {_} {
+            upvar $_ {}
+            Tk::gui dialogclose $_
+        }
+    }
+    
+    proc Quit {_} {
+        Delete $_
+    }
+    
+    namespace eval Msg {
+        proc Reply {_} {
+        }
+        proc Forward {_} {
+        }
+        proc Delete {_} {
+        }
+        proc New_Message {_} {
+        }
+    
+    }
+    
+    proc Addrs {_} {
+        eval [namespace parent]::address::new
+    }
+    
+}
+
+
+# {################ Style definitions #################}
+
+style {
+    Toplevel {
+        = =defaults
+        @deffonts {
+            fnt1  {Helvetica -14}
+            fnt2  {Helvetica -14 bold}
+            fnt3  {Helvetica -14 bold}
+            fntit {Helvetica -14 italic}
+        }
+        @defimages {
+            chalk   chalk
+            fld1    folder_blue
+            fld1o   folder_blue_open
+            read    whiteball
+            unread  greenball
+            diag    diagnol_grey
+            #mlista! {blueweave -gamma 4}
+        }
+        @defgradients {
+            grad  {Gray White -rotate 90 -height 5 }
+            grad2!  {Gray White -rotate 90 -width 40 -height 5 }
+            grad3 { Gray White -height 4 -width 400 -rotate 90 }
+            grad4  {LightGray Lavender -rotate 90 -width 20 -height 5 }
+            grad4s {LightGray Lavender -slant 1.0 }
+            grad4sa {DarkGray Lavender -slant 1.0 }
+            mlista!  {LightGray White -rotate 90 -width 20 -height 5 }
+            grads!  {Lavender #085d8c -rotate 90 -width 20 -height 5 }
+            msgttl!  {#085d8c SkyBlue -width 900 -height 5 }
+            subjttl!  {Gray Ivory -width 900 -height 5 }
+        }
+        *Scrollbar.tile ^grad4s
+        *Scrollbar.tile2 ^grad4sa
+        *highlightThickness 0
+    }
+    Entry -
+    Menu { *tile ^grad4 }
+    Panedwindow { -handlesize 0 -sashrelief raised }
+    Text {
+        -font ^fnt1
+        @bind { }
+    }
+    Button { -tile ^grad2!   -padx 5    -pady 5 }
+    TreeView {
+        -selectborder 0   -focusheight 0   -highlightthickness 1
+        -selectforeground White
+        -selecttile ^grads!
+        -icons ^fld1   -font ^fnt1
+        @eval {
+            TreeView style create textbox %W ttl -tile [images lookup %W grad2!]
+        }
+    }
+    TreeView::column {
+        -relief raised -bd 0 -justify left -titlestyle ttl
+    }
+    TreeView::column::*.msglist {
+        @style {
+            *::0 { @eval {
+                TreeView column conf %W #0 -autowidth 4i -title Subject
+            }}
+            *::From { @eval {
+                TreeView style create textbox %W from -foreground DarkGreen -font [fonts lookup %W fntit]
+                TreeView column conf %W From -style from -autowidth 200
+            }}
+            *::Date { @eval {
+                TreeView style create textbox %W date -formatcmd [list %_ DateFmt %%V]
+                TreeView column conf %W Date -style date
+            }}
+        }
+    }
+    .msgpaned { -bd 0 }
+    .toolbar { -tile ^grad -bd 1 -relief solid -bg black -tiletop 1}
+    .folders {
+        @eval {
+            TreeView style create textbox %W alt -tile [images lookup %W mlista!]
+        }
+        -bg White -width 120 -altstyle alt
+        @bind {
+            {<1> <Return>} {%_ Ops::FolderOpen}
+        }
+        @eval {
+            TreeView style create textbox %W ss -fg Blue -font {Courier -12 italic}
+            TreeView conf %W -substyle ss
+        }
+
+    }
+    .msglist {
+        -height 100 -bg White
+        @bind {
+            <Return> {%_ Ops::MsglistOpen 1}
+            <1>  {%_ Ops::MsglistOpen}
+            <3>  {!msgmenu}
+        }
+        @eval {
+            #TreeView style create textbox %W alt -bg #eff7ff; #Lavender
+            TreeView style create textbox %W alt -tile [images lookup %W mlista!]
+            TreeView conf %W -altstyle alt -icons [images lookup %W read] 
+            TreeView style create textbox %W unread -fg Blue -icon [images lookup %W unread]
+        }
+    }
+    .msg {
+        -bd 0  -highlightthickness 0 -wrap none
+        @tags {
+            btext { -lmargin1 10 -lmargin2 10 -rmargin 10 -spacing1 1 -spacing2 1 -spacing3 1}
+            # "Set tab stops for header"
+            btabs { -tabs {10 60} }
+            btitle { -font ^fnt3 -spacing1 1 -spacing2 1 -spacing3 1 }
+            bsubject { -tile ^msgttl! -foreground White -border 1 -relief solid -spacing1 4 -spacing3 4 -font ^fnt2 }
+            baddr { -foreground Blue }
+            bmail { -tile ^subjttl! -relief solid -border 1 -spacing1 3 -spacing2 0 -spacing3 1}
+        }
+        @bind {
+            <Control-w> {%_ Ops::Wrap %W}
+            <Alt-m> !compose
+            <Alt-n> {%_ Ops::OpenMsg down}
+            <Alt-p> {%_ Ops::OpenMsg up}
+            #<Alt-f> {<.msglist:Up>}
+        }
+    }
+}
+
+# {################ GUI definitions #################}
+
+# "Compose dialog"
+{Toplevel + -id compose -esc 0 -ontop 0 -title "Compose Message"} {
+    style {
+        Toplevel { #*tile ^grad3 }
+        .mframe { -bd 4 }
+        .tframe { -pady 4 }
+        .gg { @@ {-ipad 10,0} }
+        Button { -pady 0 -padx 0 }
+    }
+    {Menu +} {
+        {menu + -label Message} {
+        }
+        {menu + -label Edit} {
+        }
+    }
+    
+    {Frame + -id mframe -pos *} {
+        {grid + -id gg -pos _} {
+            {row +} {
+                {Label - -pos w} To:
+                {Entry - -id to -focus 1 -pos _} {}
+                {Button - -label ... -msgopts to -msg GetAddress} {}
+            }
+            {row +} {
+                {Label - -pos w} Cc:
+                {Entry - -id cc -pos _} {}
+                {Button - -label ... -msgopts cc -msg GetAddress} {}
+            }
+            {row +} {
+                {Label - -pos w} Bcc:
+                {Entry - -id bcc -pos _} {}
+                {Button - -label ... -msgopts bcc -msg GetAddress} {}
+            }
+            {row +} {
+                {Label - -pos w} Subject:
+                {Entry - -id subject -pos _} {}
+            }
+        }
+        {Text - -id cmsg -scroll * -pos *} {}
+    }
+}
+
+# "Move dialog"
+{Toplevel + -id movemsgs -ns Move -ontop 0 -esc 1 -title "Move Messages"} {
+    
+    style {
+        .movedst {
+            @eval {
+                %_ Move::Start %W
+            }
+        }
+    }
+    {TreeView - -id movedst -pos * -scroll *} {}
+    {buttonbox -} {Ok Cancel}
+}
+
+{Menu + -id msgmenu -ns Ops -pos ^} {
+    {x - -msg !movemsgs} Move
+    x Delete
+}
+
+# "The config dialog"
+{Menu +} {
+    {menu + -label File} {
+        x Quit
+    }
+    {menu + -label Message -ns Msg} {
+        x New_Message
+        sep {}
+        x Reply
+        x Forward
+        sep {}
+        x Delete
+    }
+}
+
+{Toplevel + -id config -title "Configuration" -geom 500x300} {
+    style {
+        Toplevel {
+            = =defaults
+            #*tile ^grad3
+        }
+        Tabset { -slant right }
+        Button { @pack { -padx 5 -pady 5 }}
+        .sig {
+            @eval {
+                #%W insert end $pc(sig)
+            }
+        }
+    }
+    {Frame + -id cfgfr -subpos l -pos be -subns Config} {
+        Button Ok
+        Button Cancel
+    }
+    {Tabset + -pos *} {
+        {tab + -label Identity} {
+            {Frame + -pos *l} {
+                {inputs - -prefix id: -label Identity -pos *} {
+                    { name    ""   "Name" }
+                    { organization     ""   "Organization" }
+                    { email   ""  "Email Address" }
+                }
+            }
+        }
+        {tab + -label Network} {
+            {Frame + -pos *l} {
+                {inputs - -prefix snd: -label Send -pos * -avar pc} {
+                    { host    ""  "Host" }
+                    { port    ""  "IP Port" -type {int -min 0 -max 128000}}
+                }
+                {inputs - -prefix rcv: -label Recieve -pos * -avar pc} {
+                    { host    ""  "Host" }
+                    { port    ""  "IP Port" }
+                    { leave   False "Leave message on host" -type bool }
+                }
+            }
+        }
+        {tab + -label Signature} {
+            {Text + -id cfgsig -pos *l -eval {%W insert end $pc(sig)}} {}
+        }
+    }
+
+}
+
+style {
+    .newmsg { @icon filenew @tip "Compose a new message to send" }
+    .addrs { @icon bookopen @tip "Open the addressbook" }
+    .reply { @icon mailreply  @tip "Reply to current mail message" }
+    .replyall { @icon mailreplyall  @tip "Reply to all for current mail message" }
+    .forward { @icon mailforward  @tip "Forward to mail message" }
+    .getmsg { @icon mailget @tip "Check for new messages" }
+    .options { @icon package_settings  @tip "Configuration options" }
+    TreeView::column { -bd 1 -relief raised }
+}
+
+# "Main window"
+{Toplevel + -title "Mail Client GUI"} {
+    
+    {Frame + -pos *} {
+        {statusbar - -ids {stat status}} {}
+        {Frame + -id toolbar -pos _ -subpos l} {
+            {Button - -msg !compose -id newmsg} NewMsg
+            {Button - -id getmsg} GetMsg
+            {Button - -id reply} Addrs
+            {Button - -id replyall} Addrs
+            {Button - -id forward} Addrs
+            {Button - -id addrs} Addrs
+            {Button - -id options -msg {!config -ontop 0}} {}
+        }
+        {#Spinbox - -combo 1 -type {choice A B C} -pos _} {}
+        {Panedwindow + -pos *} {
+            {pane +} {
+                {TreeView - -id folders -scroll * -pos *} {}
+            }
+            {pane +} {
+                {Panedwindow + -id msgpaned -pos * -vertical 1 } {
+                    {pane +} {
+                        {TreeView - -id msglist -scroll * -pos *} {}
+                    }
+                    {pane +} {
+                        {Text - -id msg -readonly 1 -scroll * -pos *} {}
+                    }
+                }
+            }
+
+        }
+    }
+}

@@ -1,0 +1,39 @@
+#!/usr/bin/env wize
+
+script {
+    proc Main {_} {
+        upvar $_ {}
+        set w $(w,tv)
+        TreeView column insert $w end Value -edit 1
+        TreeView insert $w end Users
+        TreeView insert $w end {Users Conrad} -data {Value disabled}
+        TreeView insert $w end {Users Marcus} -styles {Value chk}  -data {Value 1}
+        TreeView insert $w end {Users Barry} -styles {Value com} -data {Value Charlie}
+        TreeView insert $w end {Users Walter} -data {Value {@bar 33}}
+
+        Button new $w.but1 -text Register
+        TreeView insert $w end {Users Zach} -data {Value {@win but1}}
+
+        TreeView open $w all
+    }
+}
+
+style {
+    .tv {
+        -width 300
+        @eval {
+            TreeView conf %W -icons {}
+            TreeView button conf %W -images {blt::tv::rightarrow blt::tv::downarrow}
+            TreeView style create checkbox %W chk -showvalue 0
+            TreeView style create barbox %W bar
+            TreeView style create combobox %W com -choices {Alpha Beta Charlie Delta Gamma Foxtrot Zulu}
+            TreeView style create windowbox %W win
+    
+
+        }
+    }
+}
+
+{Toplevel +} {
+    {TreeView - -id tv -pos * -scroll *} {}
+}

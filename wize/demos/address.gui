@@ -1,0 +1,342 @@
+#!/usr/bin/env wize
+
+script {
+    # Gui for managing an address book.  Will import ~/kaddress.csv  export data.
+    # BSD Copyright 2008 -  Peter MacDonald   (See http://pdqi.com/)
+    # RCS: @(#) $Id: address.gui,v 1.7 2010/04/23 14:18:23 pcmacdon Exp $
+    
+    variable Opts {
+        { -command  {}      "Callback handler" -type {cmd addr}}
+        { -esc      False   "Close if escape hit" }
+        { -object   {}      "Object to watch for delete" }
+    }
+    variable _
+    array set _ {
+        cur:edit 0
+        addr:file ~/addressbook
+    }
+    
+    variable pc
+    set pc(fields) { "Full Name" "First Name" "Last Name" "Middle Name" "Name Prefix" "Job Title" "Company" "Email" "Nickname" "Note" "Business Phone" "Home Phone" "Mobile Phone" "Home Fax" "Business Fax" "Pager" "Street Home Address" "City Home Address" "State Home Address" "Zip Home Address" "Country Home Address" "Street Business Address" "City Business Address" "State Business Address" "Zip Business Address" "Country Business Address" }
+    
+    set pc(show) { Full_Name Email Business_Phone Home_Phone }
+    
+    proc CsvSplit {line} {
+        # Process each input character.
+        set result [list]
+        set beg 0
+        while {$beg < [string length $line]} {
+            if {[string index $line $beg] eq "\""} {
+                incr beg
+                set quote false
+                set word ""
+                foreach char [split [string range $line $beg end] ""] {
+                    incr beg
+                    if {$quote} {
+                        if {$char in {, ""}} {
+                            break
+                        } elseif {$char eq "\""} {
+                            append word $char
+                        } else {
+                            error "extra characters follow close-quote"
+                        }
+                        set quote false
+                    } elseif {$char eq ""} {
+                        error "embedded newlines not supported"
+                    } elseif {$char eq "\""} {
+                        set quote true
+                    } else {
+                        append word $char
+                    }
+                }
+                lappend result $word
+            } else {
+                regexp -start $beg {.*?(?=,|$)} $line word
+                lappend result $word
+                set beg [expr {$beg + [string length $word] + 1}]
+            }
+        }
+
+        if {[string index $line end] eq ","} {
+            lappend result ""
+        }
+
+        # Done.  Return the result list.
+        return $result
+    }
+
+    proc CSV2List {data} {
+        set rv {}
+        foreach i [split $data \n] {
+            lappend rv [CsvSplit $i]
+        }
+        return $rv
+    }
+    
+
+    proc AddrLoad {_} {
+        upvar $_ {}
+        set t $(w,addrs)
+        set fn $(addr:file)
+        if {[file exists $fn.csv]} {
+            append fn .csv
+            set data [*fread $fn]
+            set rl [CSV2List $data]
+            set r0 {}
+            foreach i [lindex $rl 0] {
+                lappend r0 [string map {{ } _} $i]
+            }
+        } elseif {[file exists $fn.tld]} {
+            set rl [*fread $fn.tld]
+            set r0 [lindex $rl 0]
+        } else {
+            return
+        }
+            
+        set n -1
+        foreach r $rl {
+            if {[incr n]==0} continue
+            array unset q
+            set d {}
+            foreach i $r0 j $r {
+                if {$i == {}} continue
+                set q($i) $j
+                lappend d $i $j
+            }
+            set full {}
+            foreach i {"Last_Name" "First_Name" "Middle_Name"} {
+                if {$q($i) == {}} continue
+                if {[string match Last* $i]} {
+                    set full $q($i)
+                    continue
+                }
+                if {$full != {} && [string first , $full]<0}  { append full , }
+                if {$full != {}}  { append full " " }
+                append full $q($i)
+            }
+            set full [string trim $full]
+            if {$full == {}} continue
+            lappend d "Full_Name" $full
+            TreeView insert $t end #auto -data $d
+        }
+    }
+    
+    proc DelObj {_ args} {
+        # Chain delete of parent.
+        Delete $_
+    }
+
+    proc Main {_ args} {
+        upvar $_ {}
+        variable pc
+        set t $(w,addrs)
+        TreeView column conf $t 0 -hide 1
+        TreeView conf $t -flat 1
+        set s {::blt::tv::SortColumn %W %C}
+        set n 0
+        foreach i $pc(fields) {
+            incr n
+            set im [string map {{ } _} $i]
+            set hide [expr {[lsearch $pc(show) $im]<0}]
+            TreeView column insert $t end $im -hide $hide -title [mc $i] -command $s
+            styles item $t column $im
+        }
+        AddrLoad $_
+        if {$(-esc)} {
+            bind $(w,.) <Escape> [list ::Delete $_]
+        }
+        if {$(-object) != {}} {
+            trace variable $(-object) u [list ::Delete $_]
+        }
+
+    }
+    
+    proc FillFields {_ l} {
+        # Load All-Fields from edit var.
+        variable edit
+        TreeView delete $l all
+        foreach i [lsort -dictionary [array names edit]] {
+            set d [list Name [string map {_ { }} $i] Value $edit($i)]
+            TreeView insert $l end #auto -data $d -userdata $i
+        }
+    }
+    
+    proc ValEdit {_ w newdata olddata ind col} {
+        # Sync changes in All-Fields back to edit variable.
+        upvar $_ {}
+        variable edit
+        set idx [TreeView entry cget $w $ind -userdata]
+        #tclLog "EE: $idx, $newdata"
+        set edit($idx) $newdata
+        if {$idx == "Note"} {
+            set w $(ed,win)
+            Text delete $w 1.0 end
+            Text insert $w end $newdata
+        }
+        return $newdata
+    }
+    
+    #proc EditChg {_ n1 n2 op} {
+    #    upvar $_ {}
+    #    .Trace
+    #}
+
+    proc StartEdit {_ _g} {
+        # Load editing fields.
+        upvar $_ {}
+        variable edit
+        set t $(w,addrs)
+        upvar $_g g
+        set l $g(w,allfields)
+        TreeView column conf $l 0 -hide 1
+        foreach i {Name Value} {
+            TreeView column insert $l end $i
+            styles item $l column $i
+        }
+        TreeView column conf $l Value -edit 1 -validatecmd [list $_ ValEdit]
+        set id [TreeView index $t focus]
+        set dat [TreeView entry cget $t $id -data]
+        array set q $dat
+        array set edit $dat
+        set (cur:edit) $id
+        set ts [Tk::findup $l * Tabset]
+        Tabset tab conf $ts "All-Fields" -command [list $_ FillFields $l]
+        set w $g(w,note)
+        set (ed,win) $w
+        Text insert $w end $edit(Note)
+        #Could map edit changes to all-fields tree instead.
+        #trace variable edit w [list $_ EditChg]
+    }
+        
+    proc EditBut_Ok {_} {
+        # User pressed ok.
+        variable edit
+        upvar $_ {}
+        set go $(gui,cur)
+        upvar $go g
+        set t $g(w,allfields)
+        set vals {}
+        foreach i [TreeView find $t all] {
+            if {$i==0} continue
+            set d [TreeView entry set $t $i Value]
+            set u [TreeView entry cget $t $i -userdata]
+            lappend vals $u $d
+        }
+        TreeView entry conf $(w,addrs) $(cur:edit) -data $vals
+        Tk::gui dialogclose $_
+    }
+
+    proc EditBut_Cancel {_} {
+        upvar $_ {}
+        Tk::gui dialogclose $_
+    }
+
+    proc EdChg {_ args} {
+        puts "ECHG: $args"
+    }
+    
+    proc EditAddr {_} {
+        upvar $_ {}
+        if {$(-command) == {}} {
+            $(guiobj) toplevel editaddr
+            return
+        }
+        set t $(w,addrs)
+        set addr [TreeView entry set $t focus Email]
+        if {$addr == {}} return
+        eval $(-command) [list $addr]
+        Delete $(guiobj)
+    }
+    
+    namespace eval Edit {
+        Mod upvars _
+        
+        proc Ok {_} {
+            Tk::gui dialogclose $_
+        }
+        
+        proc Cancel {_} {
+            Tk::gui dialogclose $_
+        }
+    }
+}
+
+style {
+    Toplevel {
+        #@gradientdefs {
+            grad3 { White Azure -height 4 -width 800 -rotate 90 }
+        }
+        #*tile ^grad3
+
+    }
+    TreeView {
+        -bg White -underline 1 -linecolor Thistle -titlefont {Helvetica -12}
+        -selectbackground        #085d8c    -selectforeground       White
+        -nofocusselectbackground #085d8c   -nofocusselectforeground White
+        -font {Times -13}
+    }
+    TreeView::column { -relief raised -bd 0  -justify left }
+    Entry { -highlightthickness 0 }
+    .addrfrxx { -bd 3 }
+    .addrs {
+        @bind {
+            <Double-1> EditAddr
+        }
+    }
+}
+
+# "Dialog definition for editing addresses"
+
+{Toplevel + -id editaddr -title "Edit Address" -geom 400x300} {
+    {style} {
+        TreeView { -linecolor Black }
+        TreeView::column { -bd 1 }
+        TreeView::column::Name { -bg GainsBoro }
+        Tabset { -bd 0 -highlightthickness 0}
+        .allfields { -height 200 }
+        .mastfr { -bd 3 }
+    }
+    
+    {Frame + -id mastfr -pos *} {
+        {Frame + -subpos l -subns Edit -pos b_} {Button Ok Button Cancel}
+        {Tabset + -id edts -pos *} {
+            {tab + -label General -underline 0} {
+                {inputs - -pos * -avar edit -msg EdChg} {
+                    Last_Name
+                    First_Name
+                    Email
+                    Business_Phone
+                    Mobile_Phone
+                    Home_Phone
+                    Business_Fax
+                }
+            }
+            {tab + -label Details} {
+                {inputs - -pos * -avar edit} {
+                    Job_Title
+                    Company
+                    Pager
+                    Nickname
+                    Street_Home_Address
+                    Zip_Home_Address
+                    Street_Business_Address
+                    Zip_Business_Address
+                }
+            }
+            {tab + -label "Note"} {
+                {Text - -id note -scroll * -pos *} {}
+            }
+            {tab + -label "All-Fields"} {
+                {TreeView - -id allfields -scroll * -pos * -eval {StartEdit %_ %G}} {}
+            }
+        }
+    }
+}
+
+{Toplevel + -geom 600x400 -title "Address Book"} {
+    
+    statusbar {}
+    {Frame + -id addrfr -pos * -matte 3} {
+        {TreeView - -id addrs -scroll * -pos *} {}
+    }
+}

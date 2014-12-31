@@ -1,0 +1,54 @@
+#!/usr/bin/env wize
+
+style {
+    .timp { -bg blue -fg white @bind { <Control-x> exit }}
+    .eimp { -bg yellow }
+    Menu {
+    }
+}
+
+{Toplevel +} {
+    {wm +} {title Gui}
+    {Menu + } {
+        {menu + -label File} {
+            x Open
+            x Save
+            x Exit
+        }
+        {menu + -label Edit} {
+            x Copy
+            x Cut
+            x Paste
+            {menu +  -label Change} {
+                x Undo
+                x Redo
+            }
+        }
+        {menu + -label Options} {
+            c Syntax
+            {r - -id bob} First
+            {r - -id bab} Second
+        }
+    }
+                
+    {Button - } {Submit}
+    {Frame +} {
+        {Text - -id timp -pos * -scroll se* -tip "Text window for input" -conf {-height 4}} {}
+        {Canvas - -pos * -conf {-height 100 -bg green}} {}
+    }
+    {Entry - -id eimp -pos _} {}
+    {Spinbox - -pos _ } {}
+    {Frame + -subpos l} {
+        {Label} Hi
+        {Message} Hi
+        Checkbutton Big
+        {Radiobutton - -name nn} Big
+        {Radiobutton - -name nn} Small
+    }
+    Listbox {a b c}
+    {grid +} {
+        {row +} { {Label - -conf "-bg green -text XXX" -pos *@2,2} {} Label {} Label There }
+        {row +} { Label {} Label {} Label Me}
+        {row +} { Label You Label Scare Label Me}
+    }
+}

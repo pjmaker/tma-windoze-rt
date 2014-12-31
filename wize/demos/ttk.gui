@@ -1,0 +1,127 @@
+#!/usr/bin/env wize
+
+{Toplevel + -title "Ttk vs Tk-Blt Demo"} {
+    script {
+        proc Hi {_} {
+        }
+        
+        proc TButton {_} {
+            upvar $_ {}
+            set T $(T,treev)
+            tree op incr $T 0->Canada->Alberta Size
+        }
+    }
+
+    style {
+        Toplevel {
+            @defimages { mybg chalk ball greenball}
+            *tile ^mybg
+            *highlightThickness 0
+        }
+        Text {
+            -bg LightGray -height 10 -width 30
+            @@ { -pos * }
+        }
+        Tabset { -slant both }
+        Tabset::tab -
+        TNotebook::tab { -underline 0 }
+        TreeView { -height 200 }
+    }
+    {Toplevel +} {
+        {TFrame + -pos * -subpos l} {
+            TMenubutton {TMenubutton A B C}
+            TLabel TLabel
+            TButton TButton
+            TCheckbutton TCheckbutton
+            {TRadiobutton - -var (doit)} TRadiobutton
+            TSizegrip {}
+            {TSeparator - -vertical 1} {}
+        }
+	TCombobox {TCombobox A B C}
+	TProgressbar {}
+	TScale {}
+	TEntry {}
+	{TNotebook + -pos * -traversal 1} {
+            {tab + -label Tree} {
+                {Treeview - -id treev -pos * -scroll * -maketree 2 -open yes} {
+                    = Population Size
+                    America  300  100 {
+                        California 50  3
+                        Idaho      10  1
+                        Florida    20  1
+                        Dakota     12  1 {
+                            South     6  1
+                            North     6  1
+                        }
+                    }
+                    Canada  30 {
+                        Alberta            5  1
+                        "British Columbia" 6  1
+                        Ontario            14  1
+                    }
+                }
+            }
+            {tab + -label Tree/Table} {
+                {Treeview - -pos *} {
+                    Name Age Sex
+                    Bob  10  M
+                    Sam  11  M
+                    Sue  12  F
+                }
+            }
+            {tab + -label Panes} {
+		{TPanedwindow + -vertical 0 -pos *} {
+		    {pane + -weight 2 -pos *} { {Text - -pos *} {} }
+		    {pane + -weight 1 -pos *} { {Text - -pos *} {} }
+		}
+	    }
+	    {tab + -label File -tip "Access File Info" } { Text {} }
+	    {tab + -label Help -icon ^ball } { Text {} }
+	}
+        {Frame + -pos * -subpos l} {
+            Menubutton {Menubutton A B C}
+            Label Label
+            Button Button
+            Checkbutton Checkbutton
+            {Radiobutton - -var (doit)} Radiobutton
+        }
+	{Scale - -horizontal 1} {}
+	Entry {}
+         {Tabset + -pos * -traversal 1} {
+             {tab + -label Tree} {
+                 {TreeView - -pos * -scroll * -maketree 2 -open yes -conf {-tile {}}} {
+                     = Population Size
+                     America  300  100 {
+                         California 50  3
+                         Idaho      10  1
+                         Florida    20  1
+                         Dakota     12  1 {
+                             South     6  1
+                             North     6  1
+                         }
+                     }
+                     Canada  30 {
+                         Alberta            5  1
+                         "British Columbia" 6  1
+                         Ontario            14  1
+                     }
+                 }
+            }
+            {tab + -label Tree/Table} {
+                {TreeView - -pos * -istable 1 -titles "Name Age Sex"} {
+                    Bob  10  M
+                    Sam  11  M
+                    Sue  12  F
+                }
+            }
+            {tab + -label Panes} {
+		{Panedwindow + -vertical 0 -pos *} {
+		    {pane + -pos *} { {Text - -pos *} {} }
+		    {pane + -pos *} { {Text - -pos *} {} }
+		}
+	    }
+             {tab + -label File -tip "Access File Info"} { Text {} }
+	    {tab + -label Help -img ^ball} { Text {} }
+	}
+    }
+}

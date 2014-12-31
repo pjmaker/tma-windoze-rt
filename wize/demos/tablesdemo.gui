@@ -1,0 +1,47 @@
+#!/usr/bin/env wize
+
+{Toplevel + -title "Tables Demo" -geom 800x400} {
+    {Panedwindow + -pos * } {
+        {pane +} {
+            # "Load raw data into a Tktable"
+            {Table - -pos * -scroll * -altedit 1 -shrink 1 -nice y} {
+                First Last Age
+                Tom Brown 12
+                Mary Brown 11
+                Bill Brown 13
+                Sam Spade 10
+            }
+        }
+
+        {pane +} {
+            # "Same data loaded into a treeview in table mode"
+            {TreeView - -pos * -nice y -istable y -titles {First Last Age} } {
+              Tom Brown 12
+              Mary Brown 11
+              Bill Brown 13
+              Sam Spade 10
+            }
+        }
+
+        {pane +} {
+            # "Tree data loaded into a treeview, indenting 4 spaces per level"
+            {TreeView - -pos * -scroll * -dups 1 -nice y -open top -titles {Position First Last Age}} {
+                Research {
+                    Manager Tom Brown 22
+                    Assistant Mary Brown 31
+                    Staff {
+                        Lead Zach Ball 21
+                        Tech Larry Fall 19
+                        Tech Mark Tims 19
+                        Trainee Sarah Conner 17
+                    }
+                }
+                Admin {
+                    Manager Bill Brown 33
+                    Assistant Sam Spade 30
+               }
+            }
+        }
+
+    }
+}

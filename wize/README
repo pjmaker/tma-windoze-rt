@@ -1,0 +1,30 @@
+Wize is a validating Gui development environment for windows/unix.
+It is distributed under the same BSD License as Tcl.
+
+INSTALATION
+-----------
+
+To install on unix use:
+
+  sudo ./wize install.tcl
+
+and on windows run:
+
+  setup.bat
+
+
+USAGE:
+------
+
+To try wize out, run:
+
+   wize /
+
+Then checkout "Apps" and "Gui".
+
+You can also run applications from the command line, eg
+
+   wize / Apps/Tdb a.out
+
+See http://pdqi.com for more information.
+

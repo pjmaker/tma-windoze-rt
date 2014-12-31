@@ -1,0 +1,1078 @@
+#!/usr/bin/env wize
+
+{options - -namespace top} {}
+
+script {
+    
+    # Process monitor with graphs.
+    #
+    # BSD Copyright 2007 - Peter MacDonald   (See http://pdqi.com/)
+    # RCS: @(#) $Id: top.gui,v 1.16 2010/04/30 16:42:30 pcmacdon Exp $
+
+    variable Opts {
+        { -delay    3   "Seconds between updates" }
+        { -updating 1   "Updating enabled" }
+        { -xmax     200 "Max points to store in graph vectors" }
+    }
+    
+    array set _ {
+        init 0     cnt 0
+        vminfo {}  meminfo {}   netinfo {}   mon:id {}    mon:tab {}
+        mon:gwid {}   graphlst {}    hideflds {}
+        allhideflds {STAT S TIME TIME+ PRI PR NI}
+        fp:top {}   topdata {}   topinit 0
+
+        after:update {}
+                
+        Vx_time {}  Vy_cpu {}   Vy_load {}   Vy_System {}   Vy_User {}
+        Vy_Nice {}  Vy_All {}
+    }
+    
+    variable signals {
+        SIGHUP        1
+        SIGTERM      15
+        SIGKILL       9
+        SIGSTOP      19
+        SIGCONT      18
+        
+        SIGABRT       6
+        SIGALRM      14
+        SIGCHLD      17
+        SIGFPE        8
+        SIGILL        4
+        SIGINT        2
+        SIGPIPE      13
+        SIGQUIT       3
+        SIGSEGV      11
+        SIGTSTP      20
+        SIGTTIN      21
+        SIGTTOU      22
+        SIGUSR1      10
+        SIGUSR2      12
+    }
+    
+    set pc(graphpid) {
+        {Frame + -id spaz$id} {
+            {Graph - -id grap$id} {}
+            {#Scrollbar - -id xscr$id}
+        }
+    }
+
+
+    proc NewVec {_} {
+        # Create a new vector.
+        upvar $_ {}
+        return [vector create #auto]
+        #return [vector create #auto($(-xmax))]
+    }
+        
+    proc InitElements {_ g els} {
+        upvar $_ {}
+        foreach i $els {
+            set (Vy_$i) [NewVec $_]
+            Graph element create $g $i -x $(Vx_time) -y $(Vy_$i)
+            styles item $g element $i
+        }
+        Graph element show $g $els
+    }
+    
+    proc InitGraph {_ g} {
+        upvar $_ {}
+        lappend (graphlst) $g
+    }
+    
+    proc CvtVal {val} {
+        set mult 1
+        if {[string match *M $val]} {
+            set val [string range $val 0 end-1]
+            set mult 1000
+        }
+        if {![string is double -strict $val]} { return $val }
+        return [expr {$mult*$val}]
+    }
+    
+    proc AddToVec {_ i val} {
+        # Add val to vector and shift off first value if required.
+        upvar $_ {}
+        set val [CvtVal $val]
+        if {![string is double -strict $val]} return
+        vector op append $(Vy_$i) $val
+        if {[vector op length $(Vy_$i)]>$(-xmax)} {
+            vector op delete $(Vy_$i) 0
+        }
+    }
+
+    proc GetVmstat {_} {
+        upvar $_ {}
+        set d [split [*fread /proc/stat] \n]
+        array set q $(vminfo)
+        set lst {}
+        foreach i $d {
+            switch -glob -- $i {
+                {cpu *} {
+                    foreach j {user nice sys idle} k [lrange $i 1 end] {
+                        set ind cpu,$j
+                        lappend lst $ind $k
+                        if {[info exists q($ind)]} {
+                            lappend lst $j [expr {$k-$q($ind)}]
+                        }
+                    }
+                }
+            }
+        }
+        set (vminfo) $lst
+        return $lst
+    }
+    
+    proc Update_CPU {_ {init 0}} {
+        upvar $_ {}
+        set g $(w,gcpu)
+        set els {Nice User System}
+        array set q [GetVmstat $_]
+        if {$init} {
+            Graph xaxis conf $g -min 0 -max $(-xmax)
+            Graph yaxis conf $g -min 0 -max 100
+            InitElements $_ $g $els
+            InitGraph $_ $g
+        }
+        if {[info exists q(user)]} {
+            set q(+System) [expr {$q(sys)}]
+            set q(+User) [expr {$q(sys)+$q(user)}]
+            set q(+Nice) [expr {$q(nice)+$q(nice)}]
+            set ttl [expr {$q(+System)+$q(+User)+$q(+Nice)+$q(idle)}]
+            foreach i $els {
+                AddToVec $_ $i [expr {100*(1.0*$q(+$i)/$ttl)}]
+            }
+        }
+    }
+    
+    proc Update_LoadAvg {_ {init 0}} {
+        upvar $_ {}
+        set g $(w,gload)
+        if {$init} {
+            set (Vy_load) [NewVec $_]
+            Graph element create $g load -x $(Vx_time) -y $(Vy_load)
+            styles item $g element load
+            Graph yaxis conf $g -min 0
+            InitGraph $_ $g
+        }
+        set data [exec uptime]
+        if {![regexp {load average: ([0-9.]+),} $data NA av]} {
+            .Warn "fail uptime: $data"
+            set av 0
+        }
+        AddToVec $_ load $av
+    }
+
+    proc GetMeminfo {_} {
+        upvar $_ {}
+        set d [split [*fread /proc/meminfo] \n]
+        array set q $(meminfo)
+        set lst {}
+        foreach i $d {
+            set i [string tolower $i]
+            switch -glob -- $i {
+                memfree* - memtotal* {
+                    set id [string range [lindex $i 0] 3 end]
+                    set id [string trim [string tolower $id] :]
+                    lappend lst mem,$id [lindex $i 1]
+                }
+                swapfree* - swaptotal* {
+                    set id [string range [lindex $i 0] 4 end]
+                    set id [string trim [string tolower $id] :]
+                    lappend lst swap,$id [lindex $i 1]
+                }
+                buffers* - cached* {
+                    set id [lindex $i 0]
+                    set id [string trim [string tolower $id] :]
+                    lappend lst mem,$id [lindex $i 1]
+                }
+                {mem: *} {
+                    foreach j {total used free shared buffers cached} k [lrange $i 1 end] {
+                        lappend lst mem,$j [expr {$k/1000000}]
+                    }
+                }
+                {swap: *} {
+                    foreach j {total used free } k [lrange $i 1 end] {
+                        lappend lst swap,$j [expr {$k/1000000}]
+                    }
+                }
+            }
+        }
+        set (meminfo) $lst
+    }
+    
+    proc Update_Mem {_ {init 0}} {
+        # Display memory usage.
+        upvar $_ {}
+        set g $(w,gmem)
+        set els { Cache Buffer App }
+        GetMeminfo $_
+        array set q $(meminfo)
+        if {$init} {
+            Graph xaxis conf $g -min 0 -max $(-xmax)
+            Graph yaxis conf $g -min 0 -max $q(mem,total)
+            InitElements $_ $g $els
+            InitGraph $_ $g
+        }
+        if {![info exists q(mem,used)]} {
+            set q(mem,used) [expr {$q(mem,total)-$q(mem,free)}]
+        }
+        set q(+Cache) [expr {$q(mem,used)}]
+        set q(+Buffer) [expr {$q(mem,used)-$q(mem,buffers)}]
+        set q(+App) [expr {$q(+Buffer)-$q(mem,cached)}]
+        foreach i $els {
+            AddToVec $_ $i $q(+$i)
+        }
+    }
+    
+    proc GetNetstat {_} {
+        # Get network stats.
+        upvar $_ {}
+        set d [split [string trim [exec netstat -i]] \n]
+        set lst {}
+        set n -1
+        foreach i $d {
+            if {[incr n]==0} continue
+            if {$n == 1} {
+                set hdrs $i
+                lappend lst $i
+                continue
+            }
+            if {[string first "no statistics" $i]>0 || [string match *:* $i]} continue
+            lappend lst $i
+            if {$n == 2} {
+                set tlst [concat TOTAL: [lrange $i 1 end]]
+                continue
+            }
+            set xlst {}
+            set m -1
+            foreach j $i k $tlst {
+                if {[incr m]!=0 && [string is double -strict $k]} {
+                    set k [expr {$k+$j}]
+                }
+                lappend xlst $k
+            }
+            set tlst $xlst
+        }
+        if {[info exists tlst]} {
+            lappend lst $tlst
+        }
+        return $lst
+    }
+    
+    proc Update_Net {_ {init 0}} {
+        # Calcuate network activity between two snapshots (per sec).
+        upvar $_ {}
+        set g $(w,gnet)
+        set els {Received Sent}
+        set flds {RX-OK TX-OK}
+        if {$init} {
+            Graph xaxis conf $g -min 0 -max $(-xmax)
+            Graph yaxis conf $g -min 0
+            foreach i $els {
+                set (Vy_$i) [NewVec $_]
+                Graph element create $g $i -x $(Vx_time) -y $(Vy_$i)
+                styles item $g element $i 
+                InitGraph $_ $g
+            }
+            Graph element show $g $els
+        }
+        set oinfo $(netinfo)
+        set (netinfo) [GetNetstat $_]
+        if {[llength $oinfo] <3 || [llength $(netinfo)] <3} return
+        set hdrs [lindex $oinfo 0]
+        set d1 [lindex $oinfo end]
+        set d2 [lindex $(netinfo) end]
+        foreach i1 $d1 i2 $d2 h $hdrs {
+            set q1($h) $i1
+            set q2($h) $i2
+        }
+        foreach i $els j $flds {
+            AddToVec $_ $i [expr {($q2($j)-$q1($j))/$(-delay)}]
+        }
+    }
+
+    proc LoadFs {_} {
+        upvar $_ {}
+        if {![info exists $_]} { return -code return }
+        set data [split [string trim [exec df]] \n]
+        # Strip trailing " on"
+        set ttl [lrange [lindex $data 0] 0 end-1]
+        set lst {}
+        lappend lst $ttl
+        foreach i [lrange $data 1 end] {
+            lappend lst $i
+        }
+        return $lst
+    }
+
+    proc Update_Filesys {_ {init 0}} {
+        # Display procs info.
+        upvar $_ {}
+        set g $(w,filesys)
+        if {$init} {eval {
+            blt::tv::TableLoad -ititles 1 -eval [list [namespace current]::LoadFs $_] -win $g -refresh [expr {$(-delay)*1000}] 
+            #TreeView column conf $g Filesystem -icon [images lookup $g files]
+            
+            foreach i [TreeView column names $g] {
+                TreeView style create textbox $g $i
+                styles item $g style $i
+                TreeView column conf $g $i -style $i
+                styles item $g column $i
+            }
+            TreeView style conf $g alt -background  Thistle
+        }}
+        
+    }
+
+    proc GetPS {_} {
+        # Get list of procs via the ps command.
+        set cmd {ps  -ewww -ouser,%cpu,%mem,vsz,rsz,pid,ppid,gid,time,tty,stat,start_time,command}
+        #set cmd {ps -aux}
+        set data [split [string trim [eval exec $cmd]] \n]
+        set ttl [lindex $data 0]
+        set lst {}
+        lappend lst $ttl
+        set pos [string last [lindex $ttl end] $ttl]
+        foreach i [lrange $data 1 end] {
+            set nl [string range $i 0 [expr {$pos-1}]]
+            lappend nl [string range $i $pos end]
+            lappend lst $nl
+        }
+        return $lst
+    }
+
+    proc ChopCmd {_ data} {
+        # Chop command from end
+        set ttl [lindex $data 0]
+        set tlen [llength $ttl]
+        set lst {}
+        lappend lst $ttl
+        set pos [string last [lindex $ttl end] $ttl]
+        foreach i [lrange $data 1 end] {
+            set nl [string range $i 0 [expr {$pos-1}]]
+            if {1 || [llength $nl] > ($tlen-1)} {
+                set llst {}
+                set last 0
+                foreach j $nl {
+                    if {[string match {[0-9]*} $j]} {
+                        set j [CvtVal $j]
+                        set last $j
+                        lappend llst $j
+                        continue
+                    }
+                    if {[string match {[0-9]*} $last]} {
+                        set last $j
+                        lappend llst $j
+                        continue
+                    }
+                    set last $j
+                    set e [lindex $llst end]
+                    lappend e $j
+                    set llst [lreplace $llst end end $e]
+                }
+                set nl $llst
+            }
+            lappend nl [string range $i $pos end]
+            lappend lst $nl
+        }
+        return $lst
+    }
+    
+    proc TopUpdate {_ vals data} {
+        # Display procs info.
+        # TODO: instead of deleting all, just update in place or add if necessary.
+        #.Trace
+        upvar $_ {}
+        set g $(w,procs)
+        set data0 [lindex $data 0]
+        if {[llength [TreeView column names $g]]<=1} {
+            set c {blt::tv::SortColumn %W %C}
+            styles item $g column 0
+            foreach i $data0 {
+                if {[lsearch $(allhideflds) $i]>=0} {
+                    lappend (hideflds) $i
+                }
+                set hide [expr {[lsearch $(hideflds) $i]>=0}]
+                TreeView column insert $g end $i -hide $hide -command $c
+                styles item $g column $i
+            }
+            TreeView column conf $g #0 -title TREE -hide [expr {!$(v,tree)}] -command $c
+            TreeView column conf $g COMMAND -titlejustify left
+            #TreeView conf $g -selectmode multiple
+        }
+        set sel [TreeView curselection $g]
+        set sids {}
+        foreach i $sel {
+            lappend sids [TreeView get $g $i]
+        }
+        TreeView delete $g all
+        set user $::env(USER)
+        #set q(PPID) 0
+        if {$(v,tree)} {
+            array set pp [exec ps -ew -opid,ppid]
+            array unset pp PID
+        }
+        set n -1
+        foreach i $data {
+            if {![incr n]} continue
+            set d {}
+            if {[llength $i] != [llength $data0]} {
+                #.Warn "Data/header size mismatch([llength $i] != [llength $data0]): '$i' != '$data0'"
+                continue
+            }
+            array unset q
+            foreach j $i k $data0 {
+                lappend d $k $j
+                set q($k) $j
+            }
+            if {![info exists q(PPID)] && [info exists pp($q(PID))]} {
+                set q(PPID) $pp($q(PID))
+            }
+            # Update monitored processes.
+            if {[lsearch $(mon:id) $q(PID)]>=0} {
+                AddToVec $_ pcpu_$q(PID) $q(%CPU)
+                if {[info exists q(SIZE)]} {
+                    AddToVec $_ pmem_$q(PID) $q(SIZE)
+                } elseif {[info exists q(VIRT)]} {
+                    AddToVec $_ pmem_$q(PID) $q(VIRT)
+                }
+                set ismon 1
+            } else {
+                set ismon 0
+            }
+            # Skip procs we are not interested in.
+            switch -glob -- $(v,ptypes) {
+                All* {}
+                System* { if {$q(USER) != "root"} {continue} }
+                User* { if {$q(USER) == "root"} {continue} }
+                Own* { if {$q(USER) != $user} {continue} }
+            }
+            # Extract command name.
+            set l [string trim $q(COMMAND)]
+            if {[string match {\[*\]} $l]} {
+                set l [string range $l 1 end-1]
+            } elseif {[string match -* $l]} {
+                set l [string range $l 1 end]
+            }
+            if {[scan $l %s ll] == 1} {
+                set l $ll
+            }
+            if {![catch { file tail $l} ll]} {
+                set l $ll
+            }
+            # Insert the row.
+            if {![info exists q(PPID)]} {
+                set q(PPID) 0
+            }
+            if {!($(v,tree) && $q(PPID))} {
+                set nid [TreeView insert $g end $q(PID) -label $l -data $d]
+            } else {
+                set pid [TreeView find $g -name $q(PPID)]
+                if {$pid == {}} { set pid 0 }
+                set nid [TreeView insert $g end $q(PID) -at $pid -label $l -data $d]
+            }
+            if {$ismon} {
+                TreeView style set $g ball PID $nid
+            }
+            if {[lsearch $sids $q(PID)] >= 0} {
+                TreeView selection set $g $nid
+            }
+        }
+        if {!$(v,tree)} {
+            TreeView column conf $g #0 -hide 1
+        } else {
+            TreeView column conf $g #0 -hide 0
+            TreeView open $g all
+            TreeView show $g all
+        }
+    }
+
+#8:02am  up 19 min,  4 users,  load average: 0.10, 0.08, 0.08
+#54 processes: 53 sleeping, 1 running, 0 zombie, 0 stopped
+#CPU states:  4.1% user,  2.9% system,  0.0% nice, 92.9% idle
+#Mem:   513116K av,  218104K used,  295012K free,       0K shrd,   19668K buff
+#Swap:  313228K av,       0K used,  313228K free                  127840K cached
+#
+#  PID USER     PRI  NI  SIZE  RSS SHARE STAT %CPU %MEM   TIME COMMAND
+#    1 root       8   0   476  476   420 S     0.0  0.0   0:04 init
+
+# top - 15:19:34 up 6 days,  8:25,  3 users,  load average: 0.00, 0.00, 0.00
+# Tasks: 149 total,   1 running, 148 sleeping,   0 stopped,   0 zombie
+# Cpu(s):  4.0%us,  0.5%sy,  0.1%ni, 95.1%id,  0.2%wa,  0.0%hi,  0.0%si,  0.0%st
+# Mem:   1017032k total,   947612k used,    69420k free,    74492k buffers
+# Swap:  1052248k total,    74180k used,   978068k free,   398604k cached
+#
+#  PID USER      PR  NI  VIRT  RES  SHR S %CPU %MEM    TIME+  COMMAND            
+#    1 root      20   0  1908  556  500 S    0  0.1   0:02.34 init               
+
+# Tasks: 198 total,   1 running, 196 sleeping,   1 stopped,   0 zombie
+# Cpu(s):  1.5%us,  1.1%sy,  0.4%ni, 96.7%id,  0.3%wa,  0.0%hi,  0.0%si,  0.0%st
+# Mem:   3020908k total,  1004988k used,  2015920k free,   105084k buffers
+# Swap:  6049784k total,   114224k used,  5935560k free,   453312k cached
+#
+#   PID USER      PR  NI  VIRT  RES  SHR S %CPU %MEM    TIME+  COMMAND            
+#  1102 root      20   0  107m  35m  11m S    4  1.2  20:20.70 Xorg               
+
+    variable tpat {
+        { {*load average*} {([^ ]*)[ ]+up[ ]+(.*),[ ]+([0-9]+)[ ]+users,[ ]+load average:(.*)} {time uptime users loadavg} }
+        { {*zomb*} {([0-9]+)[ ]+processes:[ ]*([0-9]+) sleeping,[ ]+([0-9]+)[ ]+running,[ ]+([0-9]+)[ ]+zombie,[ ]+([0-9]+)[ ]+stopped} {procs sleeping running zombie stopped} }
+        { cpu* {(.*)([.0-9]+)% user,[ ]+([.0-9]+)% system,[ ]+([.0-9]+)% nice,[ ]+([.0-9]+)% idle} {states user system nice}}
+        { mem* {Mem:[ ]+([0-9]+)K [^,]*,[ ]+([0-9]+)K used,[ ]+([0-9]+)K free,[ ]+([0-9]+)K shrd,[ ]+([0-9]+)K buff} {mem mused mfree mbuf} }
+        { swp* {Swap:[ ]+([0-9]+)K [^,]*,[ ]+([0-9]+)K used,[ ]+([0-9]+)K free} {swap sused sfree sbuf} }
+    }
+    
+    proc Now {} {
+        set now [clock seconds]
+        return "([clock format $now -format %H:%M:%S])"
+    }
+
+    proc TopRead {_} {
+        upvar $_ {}
+        variable tpat
+        if {![winfo exists $(w,.)]} { catch { close $(fp:top) }; return }
+        set data [read $(fp:top)]
+        if {$data == {}} {
+            # Reschedule top.
+            catch { close $(fp:top) }
+            set (fp:top) {}
+            set (topinit) 0
+            return
+        }
+        append (topdata) $data
+        set d $(topdata)
+        set d [string map {{<defunct>} {}} $d]
+        set d [split [string trim $d] \n]
+        if {[llength $d]<7} return
+        array set q {
+            time {} uptime {}  users 0 loadavg {}
+            procs 0 sleeping 0 running 0 zombie 0 stopped 0
+            states {} user 0 system 0 nice 0
+            mem {} mused 0 mfree 0 mshrd 0 mbuf 0
+        }
+        set hlen -1
+        set n -1
+        foreach i $d {
+            incr n
+            # Found end of headers.
+            if {[set i [string trim $i]] == {}} {
+                set hlen [expr {$n+1}]
+                if {[llength $d] < ($hlen+$q(procs)+1)} {
+                    #tclLog "SHORT1 <$d>"
+                    return
+                }
+                set pinfo [lrange $d [incr n] end]
+                # Too short.  TODO: check last line truncated.
+                set d0 [lindex $pinfo 0]
+                set dn [lindex $pinfo end]
+                set pos [string last [lindex $d0 end] $d0]
+                if {[string length $dn] < $pos} {
+                   #puts "SHORT[Now]: '$d0' != '$dn'";
+                    return
+                }
+                set (topdata) {}
+                #TODO: just schedule update in case a few more chars come in.
+                TopUpdate $_ [array get q] [ChopCmd $_ $pinfo]
+                return
+            }
+            # In headers.
+            if {$hlen < 0} {
+                switch -glob -nocase -- $i {
+                    {*load av*} {
+                    }
+                    {*zombie*} {
+                        scan $i "%s %s" a1 a2
+                        if {[string is integer -strict $a1]} {
+                            set q(procs) $a1
+                        } elseif {[string is integer -strict $a2]} {
+                            set q(procs) $a2
+                        }
+                    }
+                    {cpu*} {
+                    }
+                    {mem*} {
+                    }
+                    {swap*} {
+                    }
+                }
+                continue
+                set exp [lindex $tpat $n]
+                if {$exp == {}} continue
+                foreach {emat exps expv} $exp break
+                set cmd [list regexp -- $exps $i NA]
+                foreach j $expv {
+                    lappend cmd q($j)
+                }
+                if {[catch $cmd erv]} {
+                    .Warn "INVALID: $cmd, $erv"
+                }
+                if {$erv == 0} {
+                    .Warn "FAIL REGEXP: $cmd"
+                }
+                continue
+            }
+            error "should not happen"
+        }
+    }
+    
+    proc TopStart {_} {
+        # Start 'top' and schedule read fileevent callback.
+        upvar $_ {}
+        set (fp:top) [set fp [open "|top -n 100 -d $(-delay) -b"]]
+        set (topdata) {}
+        fconfigure $fp -blocking 0
+        fileevent $fp readable [list $_ TopRead]
+    }
+    
+    proc Update_Procs {_ {init 0}} {
+        upvar $_ {}
+        if {!$(topinit)} {
+            set (topinit) 1
+            TopStart $_
+        }
+    }
+
+    proc Update {_} {
+        # Invoke all update handlers and then reschedule.
+        upvar $_ {}
+        if {![winfo exists $(w,.)]} return
+        if {$(init)} {
+            set doinit 0
+        } else {
+            set doinit 1
+            set (Vx_time) [NewVec $_]
+            vector op seq $(Vx_time) 0 $(-xmax)
+        }
+        incr (cnt)
+        if {$(-delay) < 1} {
+            .Warn "Delay must be >= 1"
+            set (-delay) 1
+        }
+        foreach i [lsort [info commands [namespace current]::Update_*]] {
+            if {[catch {$i $_ $doinit} rv]} {
+                .Warn "Fail in [namespace tail $i]: $rv"
+            }
+        }
+        set (init) 1
+        set (after:update) [after [expr {$(-delay)*1000}] $_ Update]
+    }
+    
+    proc Refresh {_ {focus 0}} {
+        upvar $_ {}
+        Update_Procs $_
+        if {$focus} {
+            focus $(w,procs)
+        }
+    }
+    
+    proc Kill {_ {sig 9}} {
+        upvar $_ {}
+        set g $(w,procs)
+        set sel [TreeView curselection $g]
+        if {$sel == {}} return
+        set ids {}
+        foreach i $sel {
+            set id [TreeView get $g $i]
+            lappend ids $id
+        }
+        if {[tk_messageBox -message "Ok to send kill signal -$sig to '$ids'?" -type yesno] == "no"} {
+            return
+        }
+        eval exec kill -$sig $ids
+        Refresh $_
+    }
+    
+    proc Renice {_ {level 20}} {
+        upvar $_ {}
+        set g $(w,procs)
+        set sel [TreeView curselection $g]
+        if {$sel == {}} return
+        set ids {}
+        foreach i $sel {
+            set id [TreeView get $g $i]
+            lappend ids $id
+        }
+        eval exec renice $level $ids
+        Refresh $_
+    }
+  
+    proc Updating {_} {
+        upvar $_ {}
+        if {$(after:update) == {}} {
+            Update $_
+        } else {
+            after cancel $(after:update)
+            set (after:update) {}
+        }
+    }
+    
+    proc SetMarker {_ w x y marker} {
+        variable pc
+        variable MarkPos
+        if {[Graph element closest $w $x $y [namespace current]::MarkPos]} {
+            array set q [array get MarkPos]
+            set val "$q(name) $q(y)"
+        } else {
+            set val {}
+        }
+        Graph marker conf $w $marker -text $val
+    }
+    
+    proc Monitor-Close {_ tab id} {
+        upvar $_ {}
+        set ts $(w,tablst)
+        if {[tk_messageBox -message "Ok to close 'PID $id'" -type okcancel -parent [winfo toplevel $ts]] != "ok" } {
+            return
+        }
+        set f [Tabset tab cget $ts $tab -window]
+        Tabset delete $ts $tab
+        destroy $f
+        vector destroy $(Vy_pcpu_$id)
+        vector destroy $(Vy_pmem_$id)
+        if {[set n [lsearch $(mon:id) $id]]>=0} {
+            set (mon:id) [lreplace $(mon:id) $n $n]
+        }
+    }
+    
+    proc Monitor-PID {_} {
+        upvar $_ {}
+        set g $(w,procs)
+        set ts $(w,tablst)
+        set sel [TreeView curselection $g]
+        if {$sel == {}} return
+        set ids {}
+        foreach i $sel {
+            set id [TreeView get $g $i]
+            lappend ids $id
+            set cmd [TreeView entry set $g $i COMMAND]
+            set f [Frame new $ts.]
+            set nam PID-$id
+            if {[catch { Tabset insert $ts end $nam -text "PID $id" -window $f -fill both } nn]} {
+                continue
+            }
+            #set nam [lindex $nn 0]
+            Tabset bind $ts Image <ButtonRelease-1> [list $_ Monitor-Close $nam $id]
+            Tabset tab select $ts $nam
+            styles item $ts tab $nam
+            pack [Label new $f.monlbl%d -text $cmd]
+            pack [set h [Graph new $f.monpid%d]] -fill both -expand y
+            #pack [set sb [Scrollbar new $f.monsb%d -orient horizontal]] -fill x
+            #Graph xaxis conf $h -scrollcommand [list $sb set]
+            #Scrollbar conf $sb -command [list $h view y]
+            set (Vy_pcpu_$id) [NewVec $_]
+            set (Vy_pmem_$id) [NewVec $_]
+            Graph element create $h cpu -x $(Vx_time) -y $(Vy_pcpu_$id)
+            styles item $h element cpu
+            Graph element create $h mem  -x $(Vx_time) -y $(Vy_pmem_$id)
+            styles item $h element mem
+            lappend (mon:id) $id
+            eval { Blt_Crosshairs $h }
+            Graph marker create $h text -name coords -anchor nw -coords {10 5}
+            bind $h <1> [list $_ SetMarker $h %x %y coords]
+            styles item $h marker coords
+        }
+    }
+    
+    proc Tree {_} {
+        upvar $_ {}
+        set g $(w,procs)
+        TreeView conf $g -flat [expr {!$(v,tree)}]
+        Refresh $_ 1
+    }
+    
+    proc Procs {_ id args} {
+        upvar $_ {}
+        Refresh $_
+    }
+    
+    proc ColumnShow {_ s} {
+        upvar $_ {}
+        set g $(w,procs)
+        TreeView column conf $g $s -hide 0
+        if {[set in [lsearch $(hideflds) $s]] >= 0} {
+            set (hideflds) [lreplace $(hideflds) $in $in]
+        }
+    }
+    
+    proc ColumnsMenu {_ m} {
+        upvar $_ {}
+        set first [expr {[Menu cget $m -tearoff]?1:0}]
+        Menu delete $m $first end
+        foreach i $(hideflds) {
+            Menu add command $m -label $i -command [list $_ ColumnShow $i]
+        }
+    }
+    
+    proc SignalsMenu {_ m} {
+        upvar $_ {}
+        variable signals
+        if {[Menu index $m end]>1} return
+        foreach {i j} $signals {
+            Menu add command $m -label $i -command [list $_ Kill $j]
+        }
+    }
+    
+    proc Hide-Column {_} {
+        upvar $_ {}
+        set g $(w,procs)
+        set xy $::Tk::gui::pc(menuxy)
+        foreach {x y} $xy break
+        set cx [expr {$x-[winfo rootx $g]}]
+        set col [TreeView column nearest $g $cx]
+        if {$col == {}} return
+        TreeView column conf $g $col -hide 1
+        lappend (hideflds) $col
+    }
+    
+    proc MuxView {$_ args} {
+        # Mux scrollbar.
+        upvar $_ {}
+        set rc {}
+        foreach g $(graphlst) {
+            set rc [eval [list $g axis view x] $args]
+        }
+        return $rc
+    }
+
+    proc Main {_ args} {
+        upvar $_ {}
+        if {$(-updating)} {
+            Update $_
+        }
+    }
+    
+    proc  Cleanup {_} {
+        #.Warn DONE
+        upvar $_ {}
+        catch { close $(fp:top) }
+        foreach i [array names $_ after:*] {
+            catch {after cancel $($i)}
+        }
+    }
+
+}
+
+
+# "############# Style definitions ###################"
+
+{style} {
+    Toplevel {
+        = =defaults
+        @deffonts {
+            grtickfnt {Courier -9}
+        }
+        @defimages {
+            gplasma blueplasma
+            disk devdiskunmount
+            files save_all
+            close remove1
+            ball purpleball
+            term program
+            chart chart
+            procs viewtree
+        }
+        @defgradients {
+            mygr! { White  Thistle -width 60 -height 2 -rotate 90}
+        }
+        *Scrollbar.width 10
+        *Button.pady 2
+        *Labelframe.padX 4
+        *Labelframe.padY 4
+        *Axis.tickFont ^grtickfnt
+    }
+    Menu {
+        @guiattrsmap {
+            -icon {
+                Monitor-PID {chart run} Renice yellowball Send-Signal stophand
+            }
+            -tip {
+                Monitor-PID {Monitor CPU and Memory for selected process}
+                Renice {Lower priority on selected jobs}
+            }
+        }
+    }
+    Button     { -tile ^mygr! -pady 2 }
+    Menubutton { -tile ^mygr! -indicatoron 1 -pady 3 }
+    
+    Tabset { -slant right -tiers 4 -tile ^mygr! -activebackground Thistle }
+    Tabset::tab::Process_Table.tablst { -leftimage ^procs }
+    Tabset::tab::System_Load.tablst { -leftimage ^chart }
+    Tabset::tab::File_Systems.tablst { -leftimage ^disk }
+    Tabset::tab::PID* {
+        -image ^close
+        -leftimage ^chart
+    }
+    Tabset::tab { @eval {
+        Frame conf [Tabset tab cget %W %E -window] -bd 2 -relief ridge
+    }}
+    Graph {
+        -width 300 -height 200
+        -plotpadx {0 0} -plotpady {1 1}
+        @eval {
+            Graph xaxis conf %W -hide 1
+            Graph grid on %W
+            Graph grid conf %W -raised 1
+            Graph legend conf %W -position plotarea -anchor ne -bg {} -bd 0 -raised 1
+        }
+    }
+    Graph::legend {
+        -position plotarea -anchor ne -bg {} -bd 0
+    }
+
+    Graph::element { -symbol none }
+    
+    # "Catchall for Graph::element items"
+    Graph::element::* { @style {
+        *::System.gcpu    { -color DeepPink     -areaforeground DeepPink }
+        *::User.gcpu      { -color MediumBlue   -areaforeground MediumBlue }
+        *::Nice.gcpu      { -color Green        -areaforeground Green }
+        *::App.gmem       { -color DarkBlue     -areaforeground Blue }
+        *::Buffer.gmem    { -color Purple       -areaforeground MediumPurple }
+        *::Cache.gmem     { -color SaddleBrown  -areaforeground GoldenRod }
+        *::Sent.gnet    { -color Green }
+        *::cpu.monpid* {
+            -linewidth 2 -color Red
+            @eval {
+                Graph yaxis conf %W -min 0 -max 3 -title CPU -titlecolor Red -titleshadow Black
+            }
+        }
+        *::mem.monpid* {
+            -linewidth 2 -mapy y2
+            @eval {
+                Graph y2axis conf %W -hide 0 -title MEM -titlecolor Blue -titleshadow Orange
+            }
+        }
+    }}
+    Graph::element.* { @style {
+        *.gload {
+            -areapattern solid -areaforeground LightBlue -linewidth 2
+            -areatile ^gplasma
+            @eval {
+                %W legend conf -hide 1
+            }
+        }
+        *.gcpu {
+            -areapattern solid  -linewidth 2
+        }
+    
+        *.gmem     { -areapattern solid }
+    }}
+    
+    Graph::marker::coords {
+        -under 1
+    }
+    TreeView {
+        -icons ^term
+    }
+    TreeView.procs { @eval {
+        TreeView style create textbox %W alt
+        %W conf -altstyle alt
+        styles item %W style alt
+        TreeView style create textbox %W ball -icon [images lookup %W ball]
+    }}
+    TreeView::column::Use%.filesys {
+        @eval {
+            %W style create barbox buse -linewidth 1 -filltile [images lookup %W gplasma] -barbg White 
+        }
+        -style buse
+    }
+    TreeView::style::Filesystem.filesys { -icon ^disk   -gap 8 }
+    TreeView::style::alt.procs { -tile ^mygr! }
+    TreeView::column {
+        -relief raised -bd 1 -pad 10 -justify left 
+    }
+    TreeView::column::PID {
+        -justify right
+    }
+    TreeView::column.procs { -titlestyle alt }
+        #TreeView::style::Mounted { -icon ^files }
+    .procs {
+        -bg White -underline 1
+        -selectbackground DarkBlue -selectforeground White
+        -nofocusselectbackground DarkBlue -nofocusselectforeground White
+        @eval { Frame conf [winfo parent %W] -bd 2 -relief groove }
+        @bind { <ButtonPress-3> !procmen }
+    }
+    .butfr { -pady 4 }
+    .filesys {
+        = .procs
+    }
+    .monlbl* { -relief raised -bg SteelBlue -fg White }
+    xxGraph { -bg Black -fg White }
+    xxLabelframe { -padx 3 -pady 3 }
+}
+
+
+# "################# Main Window #################"
+
+{Toplevel + -title "System Monitor"} {
+    
+    style {
+        .tree { @@ { -tip "Show process tree" } }
+        .ptypes { @@ { -tip "Process class to display" } }
+    }
+    
+    {statusbar} {}
+    
+    {Menu + -id procmen -pos ^} {
+        x Monitor-PID
+        {c - -var (-updating)} Updating
+        sep {}
+        {menu + -label Send-Signal -post SignalsMenu} {}
+        x Renice
+        sep {}
+        x Hide-Column
+        {menu + -label Show-Column -post ColumnsMenu} {}
+    }
+
+    {Frame + -pos *} {
+        {Tabset + -id tablst -pos *} {
+            {tab + -label "Process Table" -pos *} {
+                {Labelframe + -pos *} {
+                    {Frame + -pos _b} {
+                        {Frame + -id butfr -pos _ -subpos l*/} {
+                            {Checkbutton - -id tree} Tree
+                            {Menubutton - -id ptypes -msg Procs -msgopts %I} {
+                                {All Processes}
+                                {System Processes}
+                                {User Processes}
+                                {Own Processes}
+                            }
+                            Button Refresh
+                            Button Kill
+                        }
+                    }
+                    {TreeView - -id procs -scroll * -pos *b} {}
+                }
+            }
+            {tab + -label "File Systems" -pos *} {
+                {TreeView - -id filesys -scroll * -pos *} {}
+            }
+            {tab + -label "System Load" -pos *} {
+                {grid + -pos *} {
+                    {row +} {
+                        {Labelframe + -label {CPU (%)} -pos *} {
+                            {Graph - -id gcpu -pos *} {}
+                        }
+                        {Labelframe + -label {Load Average} -pos *} {
+                            {Graph - -id gload -pos *} {}
+                        }
+                    }
+                    {row +} {
+                        {Labelframe + -label {Memory (Mb)} -pos *} {
+                            {Graph - -id gmem -pos *} {}
+                        }
+                        {Labelframe + -label {Network (pkt/s)} -pos *} {
+                            {Graph - -id gnet -pos *} {}
+                        }
+                    }
+                }
+                {#Scrollbar - -id xscr -horizontal 1 -pos _} {}
+            }
+
+        }
+    }
+}
+
+

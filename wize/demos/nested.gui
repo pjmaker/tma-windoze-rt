@@ -1,0 +1,243 @@
+#!/usr/bin/env wize
+
+# "Demo of element items and embedding sub-gui windows"
+script {
+    proc Ok {_} {}
+}
+style {
+    # "Style for Text"
+    Toplevel {
+        #@@image {*tile blueplasma.gif -opts {-gamma 4} }
+        @defimages {
+            bplas { blueplasma.gif -gamma 4 } 
+            grnb    greenball
+        }
+        *tile ^bplas
+    }
+    Text { @tags {
+        bold   { -foreground red -font {Courier -16 bold}}
+        italic { -foreground red -font {Courier -16 italic}}
+    }}
+    Text::* { @style {
+        *::image     { -width 10 -height 10 }
+        *::window    {
+            -padx 2 -pady 2 -align top -stretch 1
+            @eval { %S conf -padx 1 -bd 2  }
+            @style {
+                .foo*   { @eval { %S conf -bg Red } }
+                @win    { @eval { %S conf -relief sunken -bg LightBlue } }
+                default { @eval { %S conf -relief ridge -background Blue } }
+            }
+        }
+        *::window.foo* { -pady 20 }
+    }}
+
+    # "Style for Canvas"
+    Canvas - Canvas::* { @style {
+        *::window@cwin { @eval { %S conf -bg cyan -bd 4}}
+        *::rectangle* { -fill blue }
+        @cang1 { -fill pink }
+        .pog { -fill green }
+        Canvas@subcan { -bg blue }
+        *::arc { -fill red }
+        *::text { -font {Helvetica -16 bold} }
+        *::barchart { -autocolor 1 }
+    }}
+    Listbox - Listbox::* { @style {
+        @ll2 { -foreground red }
+        .li1 { -foreground green }
+    }}
+    Label { -bg orange -bd 2 -relief raised }
+    Tabset { -slant right -tiers 2 }
+    Table { -titlerows 1 }
+    Canvas3d::* { @style {
+        @c3g1 { -color blue }
+        @c3g2 { -ambient red }
+    }}
+}
+
+{Toplevel + -title "Nested widgets"} {
+    
+    {Panedwindow + -pos *} {
+        {pane +} {
+            {TreeView - -pos * -nice y -titles {Value}} {
+                a
+                    1 On
+                    2 Off
+                b
+                    1 On
+                    2 On
+                    3 Off
+            }
+        }
+        {pane +} {
+            {Tabset + -pos *} {
+                {tab + -label Text} {
+                    {Text + -scroll * -pos *} {
+                        {text - -tags bold -tip "Try it"} {Here is some Text}
+                        {window + -id mytxtwin -tip "Do it"} {
+                            Entry {}
+                            Label Here
+                            Button Ok
+                        }
+                        {text - -tags italic} {and more Text}
+                        {window + -id foo -useid mytxtwin} {}
+                        {window + -gid win -useid mytxtwin} {}
+                    }
+                }
+                {tab + -label Canvas} {
+                    {Canvas + -scroll * -pos *} {
+                        {window + -gid cwin -coord {10 10} -conf {-anchor nw}} {
+                            Entry {}
+                            Label Here
+                            Button Ok
+                        }
+                        {rectangle - -coord {100 100 200 200} -tip "My rect"} {}
+                        {rectangle - -coord {150 150 250 250} -gid cang1 } {}
+                        {rectangle - -coord {200 200 300 300} -id pog} {}
+                        {line - -coord {210 210 310 310}} {}
+                        {polygon - -coord {200 200 300 300 300 200}} {}
+                        {arc - -coord {200 10 230 30}} {}
+                        {oval - -coord {230 10 260 30}} {}
+                        {text - -coord {400 50}} {Hello There}
+                        {image - -coord {400 80}} {filenew}
+                        {barchart - -coord {200 30 300 130}} { 2 10 3 15 }
+                        {stripchart - -coord {300 30 400 130}} { 2 10 3 15 }
+                    }
+                }
+                {tab + -label Canvas+Text} {
+                    {Canvas + -scroll * -pos *} {
+                        {window + -gid cwin -coord {10 10} -conf {-anchor nw}} {
+                            Entry {}
+                            Label Here
+                            Button Ok
+                        }
+                        {text - -coord {300 50}} {Nested Layout Demo}
+                        {window + -gid cwin -coord {100 150} -conf {-anchor nw}} {
+                            {Text + -conf {-height 15}} {
+                                text "This "
+                                {window +} {
+                                    {Canvas +  -gid subcan -conf {-height 100 -width 150} } {
+                                        {arc - -coord {10 10 30 30}} {}
+                                    }
+                                }
+                                text "\nis a canvas, inside a text, inside a canvas"
+                                
+                            }
+                        }
+                    }
+                }
+                {tab + -label Listbox -subpos l} {
+                    Listbox { "The first item" "The second item" "The third item" "The forth item" }
+                    {Listbox +} {
+                        {item -} "The first item"
+                        {item - -gid ll2} "The second item"
+                        {item - -id li1} "The third item"
+                        {item - -conf {-foreground pink}} "The forth item"
+                    }
+                }
+                {tab + -label Barchart} {
+                    {Barchart + -id barch} {
+                        {element - -label Sold} { {1 2 3 4 5 6 7 8 9 10} { 26.18 50.46 72.85 93.31 111.86 128.47 143.14 155.85 166.60 175.38 } }
+                        {element - -label Held} { {1 2 3 4 5 6 7 8 9 10} { 50.46 72.85 93.31 111.86 128.47 143.14 155.85 166.60 175.38 200} }
+                        {element - -label Returned} { {1 2 3 4 5 6 7 8 9 10} { 72.85 93.31 111.86 128.47 143.14 155.85 166.60 175.38 200 220} }
+                        {marker + -type window -coords {0 200} -conf {-anchor nw}} {
+                            Label Mark1 Entry {}
+                        }
+                        {marker - -type image -coords {10 100}} greenball
+                    }
+                }
+                {tab + -label Graph} {
+                    {Graph + -useid barch} {}
+                }
+                {tab + -label Pie} {
+                    {Pie +} {
+                        {item - -label Sold} 20
+                        {item - -label Held} 30
+                        {item - -label Returned} 40
+                    }
+                    Pie { Sold 20 Held 30 Returned 40 }
+                }
+                {tab + -label Misc -subpos l} {
+                    Bargraph    20
+                    Dial        20
+                    Scale       20
+                }
+                {tab + -label Misc2} {
+                    {Text + -subpos *} {
+                        text "Layout widgets in a text window\n"
+                        {window +} { Bargraph   20 }
+                        {window +} { {Dial - -pos *}      20 }
+                        {window +} { Scale      20 }
+                    }
+                }
+                {tab + -label Table} {
+                    {Table - } {
+                        {A B C}
+                        {1 2 3}
+                        {4 5 6}
+                    }
+                }
+                {tab + -label Table2} {
+                    {Table + -conf {-titlerows 0}} {
+                        {row +} { text A text B text C }
+                        {row +} { text 1 text 2 text 3 }
+                        {row +} {
+                            {text -} 9
+                            {window +} {
+                                Label Hi
+                                Entry abc
+                            }
+                            {window +} {
+                                Label There
+                                {Entry - -pos _!} abc
+                                Entry abc
+                            }
+                        }
+                        {row +} {
+                            {text -} 10
+                            {window +} {
+                                Label Good
+                                {Entry - -pos _!} abc
+                                {Canvas + -conf {-width 70 -height 50}} {
+                                    {arc - -conf {-fill blue}} {10 10 40 40}
+                                }
+                            }
+                            {window +} {
+                                Label Looking
+                                Entry abc
+                            }
+                        }
+                    }
+                }
+                {tab + -label Canvas3d} {
+                    {Label} {If you have Canvas3d...}
+                    {Canvas3d + -pos * } {
+                        {cube - -gid c3g2} {}
+                        {sphere - -gid c3g2 -shapeconf {-center {2 0 0}}} {}
+                        light {5 7 -8}
+                        light {-8 7 8}
+                        conf {-cameralocation {-1 2 -3}}
+                        {text - -coord {400 10} -tags Counter} {}    
+                        {2dpolygon - -gid c3g1 -coord {10 10 100 10 50 100 }} {}
+                        {2dpolygon - -gid c3g1 -coord {10 100 100 100 50 10}} {}
+                    }
+                }
+                {tab + -label TreeCtrl -subpos l} {
+                    {TreeCtrl -} { a b c }
+                    {TreeCtrl - -split / } { a a/b a/c b c }
+                    {TreeCtrl +} {
+                        item a
+                        item b
+                        {tree + -label c} {
+                            item c
+                            item d
+                        }
+                    }
+                }
+
+            
+            }
+        }
+    }
+}

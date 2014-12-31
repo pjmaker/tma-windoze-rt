@@ -1,0 +1,91 @@
+#!/usr/bin/env wize
+
+{style} {
+    Toplevel {
+        *Labelframe.Pad 10
+        *Labelframe.foreground Blue
+        *Canvas.borderWidth 2
+        *Canvas.relief raised
+        *Spinbox.width 8
+        *Text.width 30
+        *Text.height 9
+        *Text.wrap none
+        *Text.background #dcdcdc
+        *Text.borderWidth 1
+        *Spinbox.borderWidth 1
+        *Button.borderWidth 1
+        *Scrollbar.width 10
+    }
+    .canvas* { -bg Blue }
+    Button@spacer { -relief flat -state disabled }
+    Label@matrixes { -padx 5 }
+    Spinbox { -buttonbackground CornFlowerBlue }
+    @mat { @pack {-pady 5} }
+    Button {
+        @tip {
+            button "Click to reset values"
+            button2 "Click to reset all values"
+        }
+    }
+}
+
+{Toplevel + -title "OpenGL Editor"} {
+    
+    {Frame + -pos l* -subpos *} {
+        {Canvas - -scroll *} {}
+        {Canvas - -scroll *} {}
+    }
+    {Frame + -pos l*} {
+        {Labelframe + -label "View (Camera)" -pos * -id viewcam} {
+            # "Top LHS"
+            {grid + -pos l -subpos e -subgid matin -minsizes 75 -pads {{} {} 10}} {
+                {row +} {
+                    Label X
+                    Spinbox {}
+                    Button Reset
+                }
+                {row +} {
+                    Label {Position Y}
+                    Spinbox {}
+                }
+                {row +} {
+                    Label Z
+                    Spinbox {}
+                }
+                {row +} { {Label - -gid spacer} {} }
+                {row +} {
+                    Label Pitch(X) 
+                    Spinbox {}
+                }
+                {row +} {
+                    Label Heading(Y) 
+                    Spinbox {}
+                }
+                {row +} {
+                    Label Roll(Z) 
+                    Spinbox {}
+                }
+            }
+            {Frame + -pos l*|} {
+                Label {OpenGL Functions}
+                {Text - -pos * -scroll *} {}
+            }
+
+        }
+        {Labelframe +  -pos * -label "Model" -useid viewcam} {}
+        {Frame + -subpos l -subgid mat -id matrixes} {
+            {Labelframe + -label "Model Matrix" -id matrix} {
+                {grid + -subgid matrixes} {
+                    {row +} {Label 0 Label 0 Label 0 Label 0}
+                    {row +} {Label 0 Label 0 Label 0 Label 0}
+                    {row +} {Label 0 Label 0 Label 0 Label 0}
+                    {row +} {Label 0 Label 0 Label 0 Label 0}
+                }
+            }
+            Label =
+            {Labelframe + -label "Model Matrix" -useid matrix} {}
+            Label X
+            {Labelframe + -label "Model Matrix" -useid matrix} {}
+        }
+    }
+}

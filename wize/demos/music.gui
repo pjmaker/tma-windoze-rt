@@ -1,0 +1,663 @@
+#!/usr/bin/env wize
+
+script {
+    
+    declare pc Array
+    set pc(version) 1.0
+    set pc(navtree) {
+        Library { 
+            {Music "The master music list"}
+        }
+        Play-Lists {
+            Favorites 
+            {Recents "Recently listened music"}
+        }
+    }
+    
+    set pc(ftypesdata) {
+        { "Data Files" .tre }
+        { "Any Files" * }
+    }
+    
+    set pc(ftypesmusic) {
+        { "Music Files" {.mp3 .ogg} }
+        { "Gif Files" .gif }
+        { "OGG Files" .gif }
+        { "Any Files" * }
+    }
+    array set _ {
+        t:tmast {}    usesnack 0    file {}    playfile {}
+        fd {}   id {}   msgs {}   playlst {}   playpos 0
+        ropts   {}    after:move {}   opt:str {}   opt:raw {}   opt:lst {}
+        dat1 {}   hasidentify 0   runtime 30    clipinfo {}    inclipinfo 0
+    }
+    
+    variable Opts {
+        { -debug    0           "Trace input from mplayer" }
+        { -geom     {}          "Geometry WxH" }
+        { -player   mplayer     "Player command" }
+        { -popts    {-slave}    "Options for player" }
+        { -fixsound False       "Resample sound to -rate value" }
+        { -rate    48000        "Rate for resampling" }
+    }
+    
+    proc Notify {_ msg args} {
+        upvar $_ {}
+        return [eval [list tk_messageBox -message $msg -parent $(w,.)] $args]
+    }
+    
+    proc Make-Nav {_} {
+        # Load the navigation tree, and stick the tooltip in -userdata.
+        upvar $_ {}
+        variable pc
+        set t $(w,tnav)
+        set i1 [image create photo -file /zvfs/img/misc16/greenball.gif]
+        set i [image create photo]
+        TreeView conf $t -icons $i
+        #TreeView button conf $t -size 0
+        foreach {i subs} $pc(navtree) {
+            set id [TreeView insert $t end $i -style catagory]
+            foreach j $subs {
+                foreach {lab tip} $j break
+                TreeView insert $t end $lab -at $id -icons $i1 -userdata $tip
+            }
+        }
+        TreeView open $t all
+        set sid [TreeView find $t -name Music]
+        TreeView entry select $t $sid
+    }
+    
+    proc FixupInfo {fn qv} {
+        # Try to fill in missing artist/album.
+        upvar 1 $qv q
+        if {$q(Artist) == {} || $q(Album) == {} || $q(Title) == {}} {
+            set fb [file rootname [file tail $fn]]
+            set slst [split $fb -]
+            if {[llength $slst]>=1} {
+                if {$q(Artist) == {}} {
+                    set q(Artist) [lindex $slst 0]
+                }
+                if {$q(Album) == {}} {
+                    set q(Album) Unknown
+                }
+                if {$q(Title) == {}} {
+                    set q(Title) $fb
+                }
+            }
+        }
+    }
+    
+    proc GetOggInfo {_ fn} {
+        # Get ogg info.
+        upvar $_ {}
+        if {$(usesnack)} {
+            set lst [snack::ogginfo $fn]
+            foreach {i j} $lst {
+                set q([string totitle [string trim $i]]) [string trim $j]
+            }
+            if {[info exists q(Comments)]} {
+                foreach i [split $q(Comments) \n] {
+                    set i [string trim $i]
+                    if {![regexp {^([-a-zA-Z0-9]+)\s*[:=](.*)} $i NA nam val]} {
+                        continue
+                    }
+                    set val [string trim $val]
+                    switch -- [string tolower $nam] {
+                        title { set q(Title) $val }
+                        artist { set q(Artist) $val }
+                        album { set q(Album) $val }
+                    }
+                }
+            }
+            FixupInfo $fn q
+            if {[info exists q(Length)]} {
+                *catch { set q(Length) [expr {int($q(Length))}] }
+            }
+            return [array get q]
+        }
+        array set q { Artist {} Album {} Title {} }
+        set info [exec ogginfo "$fn"]
+        #puts "II: $info"
+        set lst [list File $fn]
+        foreach i [split $info \n] {
+            if {[string trim $i] == {}} continue
+            if {![regexp {^([-a-zA-Z_]+)=(.*)$} $i NA pre val]} {
+                continue
+            }
+            lappend lst [string totitle $pre] $val
+        }
+        array set q $lst
+        FixupInfo $fn q
+        return [array get q]
+    }
+   
+    proc GetMp3Info {_ fn} {
+        upvar $_ {}
+        array set q { Artist {} Album {} Title {} }
+        if {$(usesnack)} {
+            set lst [snack::mp3info $fn]
+            foreach {i j} $lst {
+                set q([string totitle [string trim $i]]) [string trim $j]
+            }
+            FixupInfo $fn q
+            return [array get q]
+        }
+        # mp3info is lame as it only does IDv1.
+        #TODO: start then pause with mplayer to extract info.
+        set fmt "Title: %t\nTrack: %n\nLength: %S\nComment: %c\nAlbum: %l\nYear: %y\nGenre: %g\nArtist: %a"
+        set info [exec mp3info -p $fmt "$fn"]
+        #puts "II: $info"
+        set lst [list File $fn]
+        foreach i [split $info \n] {
+            if {[string trim $i] == {}} continue
+            scan $i %s pre
+            if {![string match *: $pre]} {
+                continue
+            }
+            set val [string range $i [expr {[string length $pre]+1}] end]
+            set pre [string trimright $pre :]
+            lappend lst $pre $val
+        }
+        array set q $lst
+        FixupInfo $fn q
+        return [array get q]
+    }
+   
+    proc Import1File {_ fn} {
+        # Import 1 music file.
+        upvar $_ {}
+        set g $(t:tmast)
+        set fn [file nativename $fn]
+        switch -- [string tolower [file extension $fn]] {
+            .mp3 { set lst [GetMp3Info $_ $fn] }
+            .ogg { set lst [GetOggInfo $_ $fn] }
+            default {
+                error "unknown extension for $fn"
+            }
+        }
+        array set q $lst
+
+        set artist [string trim $q(Artist)];  #unset q(Artist)
+        set album [string trim $q(Album)];  #unset q(Album)
+        set track [string trim $q(Title)];  #unset q(Title)
+        set q(Added) [clock format [clock seconds] -format %y-%m-%d]
+        set q(File) $fn
+        set arind [tree op find $g -name $artist -depth 1]
+        #set arind [$g index 0->\"$artist\"]
+        .Assert {[llength $arind]<=1} 1
+        if {$arind=={}} {
+            set arind [$g insert 0 -label $artist]
+        }
+        set alind [$g index $arind->\"$album\"]
+        if {$alind<0} {
+            set alind [tree op insert $g $arind -label $album]
+        }
+        tree op insert $g $alind -label $track -data [array get q]
+    }
+
+    proc SaveAs {_ {fn {}}} {
+        # Save data list file.
+        upvar $_ {}
+        variable pc
+        if {$fn == {}} {
+            set fn [tk_getSaveFile -filetypes $pc(ftypesdata)]
+            if {$fn == {}} return
+        }
+        set g $(t:tmast)
+        tree op dump $g 0 -file $fn
+        tree op ismodified $g all 0
+    }
+    
+    proc Save {_ {fn {}}} {
+        # Save data list file.
+        upvar $_ {}
+        variable pc
+        if {$fn == {}} {
+            set fn $(file)
+        }
+        if {$fn == {}} {
+            set fn [tk_getSaveFile -filetypes $pc(ftypesdata)]
+            if {$fn == {}} { return 0 }
+            if {![file writable $fn]} {
+                Notify $_ "[mc {file not writable}]: $fn"
+                return 0
+            }
+            set (file) $fn
+        }
+        set g $(t:tmast)
+        tree op dump $g 0 -file $fn
+        tree op ismodified $g all 0
+        return 1
+    }
+    
+    proc Load {_ {fn {}}} {
+        # Load a data list.
+        upvar $_ {}
+        variable pc
+        set t $(w,tmast)
+        set g $(t:tmast)
+        if {$fn == {}} {
+            set fn $(file)
+        }
+        if {$fn == {}} {
+            set fn [tk_getOpenFile -filetypes $pc(ftypesdata)]
+            if {$fn == {}} return
+        }
+        set (file) $fn
+        set (v,status) [mc "loading data"]
+        update
+        busy hold $(w,.)
+        update
+        #TODO: check overwrite.
+        #tree delete $g 0
+        tree op restore $g 0 -file $fn
+        tree op ismodified $g all 0
+        busy release $(w,.)
+        set cnt [$g find -depth 2 -count]
+        set (v,status) "[mc {finished load: count=}] $cnt"
+    }
+    
+    proc Import_File {_} {
+        # Import a music file.
+        upvar $_ {}
+        variable pc
+        set fn [tk_getOpenFile -parent $(w,.)  -filetypes $pc(ftypesmusic)]
+        if {$fn == {}} { return }
+        Import1File $_ $fn
+    }
+
+    proc Import_Folder {_} {
+        # Import a music folder
+        upvar $_ {}
+        set dir [tk_chooseDirectory -parent $(w,.)]
+        if {$dir == {}} { return }
+        busy hold $(w,.)
+        update
+        set fails {}
+        set g $(t:tmast)
+        set n 0
+        set flst [glob -nocomplain -directory $dir *.{mp3,ogg}]
+        #set flst [lsort $flst]
+        set m [llength $flst]
+        foreach i $flst {
+            incr n
+            if {[catch { Import1File $_ $i } err]} {
+                set msg "[mc {import failed}]: [file tail $i]"
+                set (v,status) $msg
+                .Warn "$msg: $err"
+                lappend fails [file tail $i]
+            } else {
+                set (v,status) "[mc {imported}] $n [mc of] $m: [file tail $i]"
+            }
+            update
+        }
+        tree op sort $g 0 -dictionary -reorder
+        busy release $(w,.)
+        set msg "[llength $flst] [mc {imports}]"
+        if {$fails>1} {
+            append msg ", [llength $fails] [mc {failed}]: $fails"
+        }
+        set (v,status) $msg
+    }
+
+    namespace eval Op {
+        
+        Mod upvars _
+        
+        proc Cmd {_ str {block False}} {
+            # Send a command to mplayer.
+            upvar $_ {}
+            if {![info exists $_]} return
+            if {$(fd) == {}} return
+            if {$block} {
+                fconfigure $(fd) -blocking 1
+                *catch { flush $(fd) }
+            }
+            puts -nonewline $(fd) $str\n
+            if {$block} {
+                fconfigure $(fd) -blocking 0
+            }
+            *catch { flush $(fd) }
+        }
+        
+        proc Load {_ file} {
+            # Start mplayer with file.
+            upvar $_ {}
+            if {[file isdirectory $file]} {
+                set file [tk_getOpenFile -initialdir $file]
+                if {$file == {}} return
+            }
+            set xopts {}
+            if {0} {
+                set x [winfo width $(w,player)]
+                set y [winfo height $(w,player)]
+                lappend xopts  -x $x -y $y
+            }
+            if {$(hasidentify)} {
+                lappend xopts -identify
+            }
+            if {$(-fixsound)} {
+                lappend xopts -aop list=resample:fout=$(-rate)
+            }
+            #set xopts ""
+            set cmd "|$(-player) $(-popts) $(ropts) $xopts \"$file\" 2>@1"
+            set (fd) [open $cmd r+]
+            set (playfile) $file
+            fconfigure $(fd) -blocking 0 -buffering line
+            fileevent $(fd) readable [list $_ Op::Read]
+            #Cmd $_ pause
+            #Cmd $_ gui_about
+            #after 1000 [list wm geom $(w,.) 610x410]
+        }
+        
+        proc PlayNext {_} {
+            upvar $_ {}
+            if {[incr (playpos)]>=[llength $(playlst)]} {
+                return
+            }
+            Load $_ [lindex $(playlst) $(playpos)]
+        }
+        
+        proc Read {_} {
+            # Read response from mplayer.
+            upvar $_ {}
+            set rc [gets $(fd) dat]
+            #puts "RC: $rc: $dat"
+            #if {$rc<0} { close $data(-fid) }
+            if {[string match "Exiting*" $dat]} {
+                fileevent $(fd) readable {}
+            }
+            if {$(-debug)>1} {
+                tclLog "DAT: $dat"
+            }
+            # Input of interest looks like this.
+            #  A:   6.3 V:   6.3 A-V:  0.000 ct:  0.040 154/154  1%  0%  0.6% 0 0
+            if {[string match "A: *" $dat]} {
+                if {$(dat1) == {}} {
+                    set (dat1) $dat
+                }
+                if {[scan $dat "%*s %s" secs] != 1} return
+                if {$secs>$(runtime)} {
+                    set (runtime) [expr {$secs*1.1}]
+                }
+                set pct [expr {100.0*$secs/$(runtime)}]
+                set (v,posbar) $pct
+                set pct [expr {int($pct)}]
+                set secs [expr {int($secs)}]
+                set (v,status) "$pct%: $secs of $(runtime)"
+                return
+            }
+            
+            if {$(-debug)==1} {
+                tclLog "DAT: $dat"
+            }
+            if {[string match "ID_LENGTH=\[0-9\]*" $dat]} {
+                set len [string range $dat 10 end]
+                if {[string is integer -strict $len] && $len>3} {
+                    set (runtime) $len
+                }
+            }
+            if {[string match "* PAUSED *" $dat]} {
+                return
+            }
+            
+            if {[string match "Exiting...*" $dat]} {
+                PlayNext $_
+                return
+            }
+            
+            #tclLog "DD($rc): $dat"
+            append (msgs) $dat \n
+        }
+                
+    }
+    
+
+    proc Search {_} {
+        # Search for music.
+        upvar $_ {}
+    }
+
+    proc Stop {_} {
+        upvar $_ {}
+        if {$(fd) == {}} return
+        close $(fd)
+        set (fd) {}
+        set (v,status) "Stopped"
+    }
+
+    proc Play {_} {
+        upvar $_ {}
+        set t $(w,tmast)
+        set g $(t:tmast)
+        set id [TreeView index $t focus]
+        if {$id == {}} return
+        set file [tree op get $g $id File {}]
+        if {$file == {}} return
+        Stop $_
+        set (runtime) [tree op get $g $id Length 0]
+        Op::Load $_ $file
+    }
+    
+    
+    proc Forward {_} {
+    }
+    proc Back {_} {
+    }
+    
+    proc About {_} {
+        upvar $_ {}
+        variable pc
+        set msg "[mc {Music Gui : Version}]: $pc(version)\n"
+        append msg [mc {BSD Copyright 2010}]\n
+        append msg "Peter MacDonald\n"
+        append msg www.pdqi.com
+        tk_messageBox -message $msg -parent $(w,.)
+    }
+    
+    proc Quit {_} {
+        ::Delete $_
+    }
+    
+    proc BigTest {_} {
+        # Load test filling music with 50k: 1000 artists * 5 albums * 10 songs
+        upvar $_ {}
+        set t $(w,tmast)
+        set g $(t:tmast)
+        if {[TreeView entry children $t 0] != {}} {
+            Notify $_ [mc {Big test must be on empty music}]
+            return
+        }
+        set (v,status) "Starting big test, please wait"
+        update
+        busy hold $(w,.)
+        update
+        set tim [clock format [clock seconds] -format %y-%m-%d]
+        set d [list Length 321 Year 2002 Genre Rock Comment "a comment" Added $tim]
+        for {set a 1} {$a<=1000} {incr a} {
+            set aid [$g insert 0 -label Artist$a]
+            for {set r 1} {$r<=5} {incr r} {
+                set rid [$g insert $aid -label Album$r]
+                set dat $d
+                lappend dat Artist Artist$a Album Album$r
+                for {set s 1} {$s<=10} {incr s} {
+                    set data $dat
+                    lappend data Title Song$s File /some/dir/song$s.mp3
+                    $g insert $rid -label Song$s -data $data
+                }
+            }
+        }
+        busy release $(w,.)
+        set (v,status) "Finished big test"
+    }
+    
+    proc Main {_ args} {
+        # Startup handler.
+        upvar $_ {}
+        #set (t:tart) [TreeView cget $(w,tart) -tree]
+        set (t:tmast) [TreeView cget $(w,tmast) -tree]
+        if {![catch {package require snack}]
+        && [info commands ::snack::mp3info] != {}} {
+            set (usesnack) 1
+        }
+        set t $(w,tmast)
+        TreeView conf $t -allowduplicates 1
+        set levsty {}
+        foreach i {artist album} {
+            TreeView style create textbox $t $i
+            styles item $t style $i
+            lappend levsty $i
+        }
+        TreeView conf $t -levelstyles $levsty
+
+        # TODO: set -create notify on tmast to apply style automatically.
+        if {[llength $args]} {
+            Load $_ [lindex $args 0]
+        }
+    }
+    
+    proc Cleanup {_} {
+        # Exit handler.
+        upvar $_ {}
+        if {[tree op ismodified $(t:tmast)]} {
+            set op [tk_messageBox -type yesnocancel -icon warning -parent $(w,.) -message [mc "Save modifications?"]]
+            switch -- $op {
+                no { return }
+                yes { if {[Save $_]} return }
+                cancel { }
+            }
+            return -code break 
+        }
+    }
+}
+
+style {
+    # "STYLE SECTION"
+    
+    Toplevel {
+        @deffonts {
+            myfnt1 {Verdana,Courier 14 bold}
+            myfnt2 {Verdana,Courier 12 bold}
+            myfnt3 {Verdana,Courier 13 bold}
+        }
+        @defimages {
+            menbgx {blueplasma -gamma 1}
+            menbg {}
+            downimg 1downarrow
+            rightimg 1rightarrow
+            artist user
+            album cd
+            song key_enter
+        }
+        @eval {
+            if {[lsearch [string tolower [font families]] verdana]>=0} {
+                font conf TkDefaultFont -family verdana
+                font conf TkFixedFont -family verdana
+            }
+        }
+    }
+    Panedwindow {
+        -showhandle 0 -sashwidth 4
+    }
+    TreeView {
+        -height 70 -bg White -underline 1 -showfull 0
+        -selectbackground DarkBlue -selectforeground White
+        -nofocusselectbackground SteelBlue
+        @@ { -matte -1 }
+    }
+    TreeView::column {
+        -relief raised -bd 1 -edit 1
+    }
+    TreeView::column::#0.tmast {
+        -autowidth 300 -title Artist/Album
+    }
+    TreeView::style::artist.tmast {
+        -shadow Gray -font ^myfnt1 -bg LightBlue -icon ^artist
+    }
+    TreeView::style::album.tmast {
+        -shadow Gray -font ^myfnt2 -bg Gainsboro -icon ^album
+    }
+    Menu {
+        -tile ^menbg -bg #4a92c7 -bd 1 -activeborderwidth 0
+    }
+    .posbar {
+        -showvalue 0 -highlightthickness 0 -width 7 -tile ^menbg  -bg #4a92c7 -bd 1
+    }
+    .tnav {
+        -width 140 -linewidth 0
+        #@@ { -altbg #4a92c7  }
+        @eval {
+            TreeView button conf %W -images [list [images lookup %W rightimg] [images lookup %W downimg]]
+        }
+        @eval {
+            TreeView style create textbox %W catagory -shadow Gray -bg Gainsboro -font [fonts lookup %W myfnt3]
+        }
+    }
+    .tmast {
+        -leaficons ^song
+        @bind { <Return> Play }
+    }
+}
+{Toplevel + -geom 600x400 -title {Music Gui}} {
+    {Menu + -label {Music GUI}} {
+        {Menu + -label Music} {
+            x Import_File
+            x Import_Folder
+            sep {}
+            x Load
+            x Save
+            sep {}
+            x Quit
+        }
+        {Menu + -label Edit} {
+        }
+        {Menu + -label View} {
+        }
+        {Menu + -label Tools} {
+        }
+        {Menu + -label Help} {
+            x About
+            sep {}
+            x BigTest
+        }
+    }
+    statusbar {}
+    {Frame + -id toolbar -pos _ -subpos l} {
+        Button Back
+        Button Play
+        Button Forward
+        Button Stop
+    }
+    {Panedwindow + -id mapmus -pos * } {
+        {pane + -pos *} {
+            {TreeView - -id tnav -pos * -initmsg Make-Nav -tipkey *} {}
+        }
+        {pane + -pos *} {
+            {Frame + -pos _} {
+                {Scale - -id posbar -pos _ -horizontal 1} {}
+                {Frame + -subpos l -pos _} {
+                    Label Search:
+                    {Spinbox - -id srch -msg Search -pos *} {}
+                }
+            }
+            {mapwin + -pos *} {
+                {TreeView - -id tmast -pos * -maketree 1  -titles {Track Length Year Genre Comment File Added Artist Album Title} -sort 1 -scroll *} {}
+                {Panedwindow + -vertical 1 -pos *} {
+                    {pane + -pos *} {
+                        {Panedwindow + -vertical 0 -pos *} {
+                            {pane + -pos *} {
+                                {TreeView - -id tart -titles Artist -pos * -istable 1 -maketree 1} {}
+                            }
+                            {pane + -pos *} {
+                                {TreeView - -id talb -titles Album -pos * -istable 1} {}
+                            }
+                        }
+                    }
+                    {pane + -pos *} {
+                        {TreeView - -id tsong -titles {Title Album Artist Time Added} -pos * -istable 1} {}
+                    }
+                }
+            }
+        }
+    }
+}

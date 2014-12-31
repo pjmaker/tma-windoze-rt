@@ -1,0 +1,6 @@
+
+ README - for the windoze runtime for TMA.
+
+This directory contains a tcl/tk/blt interpreter wize (see wize/README)
+that is the runtime for windows for TMA. As of early versions of TMA this
+has NOT been modified from the original but that may change.

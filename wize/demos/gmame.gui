@@ -1,0 +1,209 @@
+#!/usr/bin/env wize
+
+script {
+    
+    array set _ {
+        mcmd xmame.x11    mvar {}    mout {}    merr {}    bgvar {}
+        file {}    hide 0
+        t:gtree {}
+    }
+    *array pc
+    
+    proc Rebuild {_} {
+        # Build (or rebuild) list of all mame games.
+        upvar $_ {}
+        set wg $(w,gtree)
+        set g [$wg cget -tree]
+        busy hold $(w,.)
+        update
+        bgexec (bgvar) -local 1 -error merr -output mout -- $(mcmd) -listfull
+        #tclLog "MM([namespace current]): $mvar"
+        #*fwrite /tmp/fout.txt $mout
+        catch {
+            set lst [lrange [split $mout \n] 2 end-1]
+            set nlst {}
+            #::TreeView delete $wg 0
+            set m 0
+            foreach i [lsort -dictionary $lst] {
+                if {[string trim $i] == {}} continue
+                set ttl [lindex $i 1]
+                set n [lindex $i 0]
+                set idx [$g index 0->\"$n\"]
+                if {$idx >= 0} {
+                    $g set $idx Title $ttl
+                } else {
+                    set d [list Title $ttl]
+                    $wg insert end [list $n] -data $d -forcetree 1
+                }
+                incr m
+            }
+        }
+        busy release $(w,.)
+        set (v,status) "[mc Loaded]: $m"   
+    }
+    
+    proc Verify {_} {
+        # Verify all games in gamelist.
+        upvar $_ {}
+        set wg $(w,gtree)
+        set g [$wg cget -tree]
+        busy hold $(w,.)
+        update
+        bgexec (bgvar) -local 1 -error err -output mout -- $(mcmd) -verifyromsets
+        # TODO: sdlmame uses -verifyroms and short info prefix is "romset NAME ..."
+        catch {
+            set nlst [split $mout \n]
+            set lst [lrange $nlst 0 end-3]
+            foreach i [lsort -dictionary $lst] {
+                if {[string trim $i] == {}} continue
+                #if {[string first : $i]>=0} continue
+                #if {[string is space [string index $i 0]]} continue
+                set n [lindex $i 0]
+                set d [lrange $i 1 end]
+                set idx [$g index 0->\"$n\"]
+                if {$idx >= 0} {
+                    $g set $idx Status $d
+                } else {
+                    set d [list Status $d]
+                    $wg insert end [list $n] -data $d -forcetree 1
+                }
+            }
+        }
+        busy release $(w,.)
+        
+    }
+    
+    proc Save {_} {
+        # Save game info to a file.
+        upvar $_ {}
+        if {$(file) == {}} {
+            set (file) [tk_getSaveFile]
+        }
+        if {$(file) == {}} return
+        set dat [tree op dump $(t:gtree) 0 -file $(file)]
+    }
+    
+    proc Load {_ {fn {}}} {
+        # Load file of saved game info.
+        upvar $_ {}
+        if {[set (file) $fn] == {}} {
+            set fn [set (file) [tk_getOpenFile]]
+        }
+        if {$(file) == {}} return
+        set dat [tree op restore $(t:gtree) 0 -file $(file)]
+    }
+    
+    proc Hide {_} {
+        # Hide all games that did were "not found".
+        upvar $_ {}
+        set wg $(w,gtree)
+        set (v,status) [mc "starting hide"]
+        set lst [TreeView find $wg -name "not found" -column Status]
+        set (hide) [expr {!$(hide)}]
+        if {$(hide)} {
+            TreeView hide $wg $lst
+        } else {
+            TreeView show $wg $lst
+        }
+        set (v,status) [mc "done hide"]
+    }
+    
+    proc Filter {_} {
+        # Filter the displayed games.
+        upvar $_ {}
+        set wg $(w,gtree)
+        set val [string trim $(v,filt)]
+        if {$val == {}} {
+            TreeView show $wg all
+            return
+        }
+        set ids [TreeView find $wg -name *$val* -glob]
+        TreeView hide $wg all
+        TreeView show $wg $ids
+
+    }
+    
+    proc Open {_} {
+        upvar $_ {}
+        set wg $(w,gtree)
+        set id [TreeView index $wg focus]
+        if {[TreeView entry children $wg $id]!={}} return
+        #tclLog "ID: $id"
+        #TODO: if using sdlmame parse xml, etc.
+        #bgexec (bgvar) -local 1 -error err -output mout -- $(mcmd) --listxml
+        
+    }
+    
+    proc Main {_ args} {
+        # Startup handler.
+        upvar $_ {}
+        set (t:gtree) [TreeView cget $(w,gtree) -tree]
+        TreeView conf $(w,gtree) -allowduplicates 1 -opencommand [list $_ Open]
+        if {[llength $args]} {
+            update
+            Load $_ [lindex $args 0]
+        }
+        #{Game Samples Directory Played Manufacturer Year Clone Driver Version Category}
+    }
+    proc Cleanup {_} {
+        # Exit handler.
+        upvar $_ {}
+    }
+}
+
+style {
+    Toplevel {
+    }
+    TreeView {
+        -bg White -nofocusselectbackground Gold -selectbackground GoldenRod
+    }
+    TreeView::column {
+        -relief raised -bd 1 -titlejustify l
+    }
+    TreeView::column::#0.gtree {
+        @eval {
+            %W style create textbox Rom -font TkDefaultFont
+            %W column conf #0 -style Rom
+        }
+    }
+    TreeView::column::Title.gtree {
+        -autowidth 200
+    }
+    .butf {
+    }
+    .gtree {
+        -underline 1
+        @eval {
+            %W column conf #0 -title [mc Rom]
+        }
+        @@ {
+            -altbg CornSilk -titles {Title Status Played Rating} -sort 1 -maketree 1 
+        }
+    }
+}
+{Toplevel + -geom 600x400 -title {Mame GUI}} {
+    statusbar {}
+    {Menu + -label "GMame Menu"} {
+        {Menu + -label File} {
+           x Load
+           x Save
+        }
+    }
+    {Frame + -id butf -pos _ -subpos l} {
+        Button Rebuild
+        Button Verify
+        Button Save
+        Button Hide
+        Label Filter:
+        {Entry - -id filt -msg Filter} {}
+    }
+    {Panedwindow + -vertical 0 -pos *} {
+        {#pane + -pos *} {
+            {TreeView - -id optree -matte -1 -scroll * -pos *} {
+            }
+        }
+        {pane + -pos *} {
+            {TreeView - -id gtree -matte -1 -scroll * -pos *} {}
+        }
+    }
+}

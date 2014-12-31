@@ -1,0 +1,2 @@
+wize install.tcl
+

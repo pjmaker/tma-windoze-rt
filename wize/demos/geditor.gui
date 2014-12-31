@@ -1,0 +1,152 @@
+        style {
+            Toplevel {
+                @@image {*Text.tile lines -gamma 8}
+                @defgradients {
+                    !sel    { White MidnightBlue -width 64 -height 10 -rotate 90 -gamma 3 }
+                }
+                *Text.scrollTile 1
+                *Menubutton.indicatorOn 1
+                *Labelframe.padX 7
+                *Labelframe.padY 7
+            }
+            Text { -undo 1 #-background PaleGoldenrod}
+            Tabset { -slant right -tiers 4}
+            Tabset::tab { @@ { -img greenball } }
+            Menu { -bd 2 -relief raised -bg Blue @style {
+                .file {
+                    -bg Red 
+                    @guiattrsmap {
+                        -icon { Tab {folder_purple_3 folder_purple_open} New {filenew fileopen} Save filesave }
+                        -key { Tab <Alt-t> Open <Alt-o> Close <Alt-w> Save <Alt-s> } 
+                    }
+                }
+                .edit {
+                    @guiattrsmap { -key { Cut <Control-x> } }
+                }
+                .edmnu { -bg Orange }
+                @ditty { -bg Purple }
+            }}
+            .edtxt* {
+                #@bind { <3> !submen1 <Control-s> !find  }
+                @bind { <3> !submen1  }
+                @eval {
+                    Text tag conf %W sel -background {} -tile [images lookup %W !sel]
+                }
+            }
+            .subff {  @matte pad=10,ipadx=50,relief=sunken}
+            .quit  { -bg blue }
+        }
+        
+        # "External override style/gui using include-silent ..."
+        {#include - -quiet 1} ~/.tcl/geditor/style.gui
+        
+        # "Find dialog"
+        {Toplevel + -id find -ns Find -title "Find in File"} {
+            {Frame + -matte 10 -pos *} {
+                {Frame + -subpos l -pos _} {
+                    Label Find:
+                    {Entry - -id input -msg Find -focus 1 -pos _} {}
+                }
+                {Frame + -subpos l -pos _} {
+                    Checkbutton Nocase
+                    Checkbutton Backward
+                    Checkbutton Word
+                    Checkbutton Regexp
+                }
+                {buttonbox - } {Find Clear Cancel}
+                {#Frame + -subpos -l*/ -pos _} {
+                    Button Find
+                    Button Clear
+                    Button Cancel
+                }
+            }
+        }
+        
+        # "About help"
+        {Toplevel + -id about -ns Help -title "About Geditor"} {
+            style {
+                Toplevel { *background SteelBlue }
+                Button { -bg LightBlue }
+                Label  { -font {Courier -20 bold italic underline}}
+                .frame* { -bg Purple }
+            }
+            {Frame + -matte 10} {
+                {Frame + -matte 10} {
+                    Label "BSD Copyright 2008\nPeter MacDonald"
+                }
+                {Button - -focus 1} Ok
+            }
+        }
+        
+        # "The main application window"
+        {Toplevel + -title "Geditor" -geom  800x600} {
+            {Menu + -label Geditor} {
+                {menu + -label File -ns File} {
+                    x Tab
+                    x Open
+                    x New
+                    sep {}
+                    x Save
+                    x SaveAs
+                    sep {}
+                    x Info
+                    sep {}
+                    x Close
+                    x Quit
+                }
+                {menu +  -id edmnu -gid ditty -label Edit -ns File } {
+                    x Copy
+                    x Cut
+                    x Paste
+                    sep {}
+                    x Undo
+                    x Redo
+                }
+                {menu + -id setmnu -label Config -ns Config} {
+                    {menu + -label Fontsize -subattr {-msg Fontsize -msgopts %B}} {
+                        x Tiny
+                        x Small
+                        x Normal
+                        x Medium
+                        x Large
+                        x Huge
+                    }
+                    {menu + -label Tabs -subattr {-msg Tabs -msgopts %B}} {
+                        x top
+                        x bottom
+                        x left
+                        x right
+                    }
+                    {c - -var (wrap)} Wrap
+                }
+            
+                {menu +  -gid ditty -label Help -ns File } {
+                    {x - -msg !about} About
+                    x Icons
+                    x Console
+                    x Code
+                }
+            }
+            
+            {Menu +  -id submen1  -ns File  -pos ^} {
+                x Copy
+                x Cut
+                x Paste
+            }
+
+            {Frame + -pos *} {
+                
+                # "Statusbar (packs to bottom) done first so doesn't disappear"
+                {statusbar - -ids {statusln status} -widths {8}} {}
+                
+                {Frame + -pos *} {
+                    {Tabset + -id tabset -pos *} {
+                        # "First tab definition"
+                        {tab + -id edtab -label unnamed} { 
+                            {#Entry - -pos _} {}
+                            {Text - -id edtxt -pos * -scroll *} {}
+                        }
+                    }
+                }
+            }
+        }

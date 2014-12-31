@@ -1,0 +1,31 @@
+#!/usr/bin/env wize
+{#} {A mockup user interface of an editor using GUI}
+script {
+    proc Quit {_} {
+        ::Delete $_
+    }
+}
+style {
+    Toplevel { = =defaults }
+    .textwin {
+        -wrap none -bg SkyBlue -undo 1 -height 3
+        @bind {
+            <Control-s> ^find
+        }
+        @eval {
+            Text insert %W end [*fread $pd(script)]
+        }
+    }
+}
+{Toplevel + -geom 800x600 -title {Editor Mockup}} {
+    {Button - -conf {-fg White} -shadow {Black 1}} Quit
+    include editmenu.gui
+    {statusbar - -id stat} {}
+    {Frame + -matte 10 -pos *} {
+        {Text - -scroll nw* -focus 1 -id textwin -pos *} {}
+        {tk - -pos _} {
+            # Example using Tk inline with % substitutions.
+            pack [entry %W -bg Yellow] -fill x -padx 1
+        }
+    }
+}

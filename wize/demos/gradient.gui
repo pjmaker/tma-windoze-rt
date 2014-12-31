@@ -1,0 +1,239 @@
+#!/usr/bin/env wize
+
+script {
+    # Dialog to manipulate/create image gradients.
+    #
+    # BSD Copyright 2007 - Peter MacDonald   (See http://pdqi.com/)
+    # RCS: @(#) $Id: gradient.gui,v 1.9 2010/05/14 19:20:38 pcmacdon Exp $
+    
+    array set _ {
+        after:redraw {}  
+
+        v,width 50     v,height 50   v,rotate 0   v,mathfunc circle
+        v,type sine    v,slant 0     v,skew 1.0   v,status {}
+        v,gamma 1      v,mathval 0   v,rand 0     v,tile False
+        
+    }
+    
+    declare pc Array
+    set pc(types) { sine halfsine linear radial rectangular split blank }
+    set pc(funcs) { sin cos tan sinh cosh tanh asin acos atan log log10 exp sqrt circle rand }
+    
+    set pc(help) {
+The gradient options below modify the end colors, size,
+and other settings.
+
+The result shown in status below can be used in a
+style @defgradients. Note status below is editable.
+    }
+
+    proc Generate {_} {
+        upvar $_ {}
+        upvar [namespace current]::_ __
+        set img [Text cget $(w,txt) -tile]
+        photos conf $img -width $(v,width)
+        photos conf $img -height $(v,height)
+        set c1 [Button cget $(w,color1) -bg]
+        set c2 [Button cget $(w,color2) -bg]
+        set cmd [list winop image gradient $img $c1 $c2 -type $(v,type) -slant $(v,slant) -mathval $(v,mathval) -mathfunc $(v,mathfunc) -rand $(v,rand) -skew $(v,skew)]
+        eval $cmd
+        set msg "[lindex $cmd 4] [lindex $cmd 5]"
+        foreach i {width height gamma slant mathval mathfunc rand skew type} {
+            if {$__(v,$i) != $(v,$i)} {
+                append msg " -$i $(v,$i)"
+            }
+        }
+        if {$(v,tile) && $(v,tile) == "2"} {
+            set img2 [image create photo]
+            winop image mirror $img $img2 tile
+            image delete $img
+            set img $img2
+            append msg " -tile 2"
+        }
+        if {$(v,rotate) != 0} {
+            switch -- $(v,rotate) {
+                0 {}
+                90 - 180 - 270 {
+                    set img2 [image create photo]
+                    winop image rotate $img $img2 $(v,rotate)
+                }
+                default {
+                    set w1 [$img cget -width]
+                    set h1 [$img cget -height]
+                    set img3 [image create photo -width [expr {3*$w1}] -height [expr {3*$h1}]]
+                    winop image mirror $img $img3 tile
+                    set img4 [image create photo]
+                    winop image rotate $img3 $img4 $(v,rotate)
+                    set img2 [image create photo -width $w1 -height $h1]
+                    $img2 copy $img4 -from $w1 $h1
+                    image delete $img3
+                    image delete $img4
+                }
+            }
+            image delete $img
+            set img $img2
+            append msg " -rotate $(v,rotate)"
+        }
+        if {$(v,tile) && $(v,tile) != "2"} {
+            set img2 [image create photo]
+            winop image mirror $img $img2 tile
+            image delete $img
+            set img $img2
+            append msg " -tile 1"
+        }
+        photos conf $img -gamma $(v,gamma)
+        Text conf $(w,txt) -tile $img
+        set (v,status) $msg
+        Entry selection range $(w,status) 0 end
+        catch {clipboard clear; clipboard append $msg}
+    }
+
+    proc EventuallyRedraw {_ args} {
+        upvar $_ {}
+        catch {after cancel $(after:redraw)}
+        set (after:redraw) [after 100 [list $_ Generate]]
+    }
+    
+    proc Color1 {_ {ind 1}} {
+        upvar $_ {}
+        set b $(w,color$ind)
+        set bg [Button cget $b -bg]
+        set ncol [tk_chooseColor -initialcolor $bg -parent $(w,.) -title "Color $ind"]
+        if {$ncol != {}} {
+            Button conf $b -bg $ncol
+            EventuallyRedraw $_
+        }
+    }
+    
+    proc Color2 {_} { Color1 $_ 2 }
+    
+    proc Tile {_} { EventuallyRedraw $_ }
+    
+    proc Rotate {_} { EventuallyRedraw $_ }
+        
+    proc Event {_ w args} {
+        EventuallyRedraw $_
+    }
+    
+    proc LoadSpec {_} {
+        upvar $_ {}
+        set w $(w,status)
+        set val [Entry get $w]
+        foreach i {1 2} j [lrange $val 0 1] {
+            Button conf $(w,color$i) -bg $j
+        }
+        foreach {onam val} [lrange $val 2 end] {
+            set nam [string range $onam 1 end]
+            if {![info exists (v,$nam)]} {
+                error "unknown option: $nam"
+            }
+            set (v,$nam) $val
+        }
+        EventuallyRedraw $_
+    }
+
+    proc Main {_ args} {
+        upvar $_ {}
+        variable pc
+        set t $(w,txt)
+        Text conf $t -tile [image create photo]
+        Text insert $t end $pc(help) msg
+        Text conf $t -state disabled
+        EventuallyRedraw $_
+        Entry conf $(w,status) -state normal
+    }
+    
+
+}
+
+# "############## Style  ##############"
+
+style {
+    Toplevel {
+        = =defaults
+        @defgradients {
+            mygrad {gray lightgray -type linear -width 6 -height 2 -rotate 90}
+        }
+        @defimages {
+            mybg chalk
+        }
+        *tile ^mygrad
+    }
+    Scale { -orient horizontal   -highlightthickness 0 -sliderlength 10 -width 3m }
+    Dial { -constrainvalue 1   -highlightthickness 0 }
+    Scale - Dial - Spinbox - Checkbutton {
+        @eval {
+            %W  conf -bd 1
+            bind %W <Enter> { %%W conf -bd 1 -relief raised }
+            bind %W <Leave> { %%W conf -bd 1 -relief flat }
+        }
+    }
+    Checkbutton { -highlightthickness 0}
+    Spinbox { -width 12 }
+    Text.txt {
+        -wrap none -width 60 -height 15
+        @tags { msg {-font {Courier -14 bold}} }
+    }
+    .type {   @tip "The horizontal transform-function" @subst { -values [list $pc(types)] } }
+    .gamma { -resolution .1   -from 0.0   -to 10.0   @tip "Color correction (ie. lighten/darken)"}
+    .skew {  -resolution .05   -from 0.05   -to 1.0  @tip "Compress gradient to the left side" }
+    .slant { -resolution .1   -from -100   -to 100   @tip "Slope of gradient (eg. 1 = 45 degrees)" }
+    .width { -from 0   -to 1000   @tip "The width before rotation" }
+    .height { -from 0   -to 1000   @tip "The width before rotation" }
+    .mathval { -resolution .1   -from -100   -to 100   @tip "Argument for mathfunc (0 = disable)" }
+    .mathfunc { @tip "A vertical-transform function\n(used if matval is not 0)" }
+    .rotate { -resolution 5 -bigincrement 90   -from 0   -to 360   @tip "Rotation for image" }
+    .color1 { -bg SkyBlue   -tile {}   @tip "The starting color" }
+    .color2 { -bg SteelBlue   -tile {}   @tip "The ending color" }
+    .rand { -resolution .01   -from 0   -to .1   @tip "Random value (max) to add to points" }
+    .status {
+        @bind { <KeyPress-Return> LoadSpec }
+        @tip "Style specification.  Edit & hit enter to take effect"
+    }
+    .tfram {
+        -tiletop 1
+    }
+}
+
+
+# "############## Main Window ##############"
+
+{Toplevel + -eventmsg Event -title "Gradient Editor"} {
+    
+    {Entry - -id status -pos _b} {}
+    {Frame + -pos * -id main -matte 10} {
+        # "Pack bottom to ensure that Text gets only the unused space"
+        {Frame +  -pos _b} {
+            {grid + -pos *} {
+                {row + -pos s} {
+                    {Button - -id color1} Color1
+                    {Button - -id color2} Color2
+                    {Frame +} {
+                        {Label - -pos w} Type:
+                        {Spinbox - -id type -conf {}} {}
+                    }
+                    {Frame +} {
+                        {Label - -pos w} Mathfunc:
+                        {Spinbox - -id mathfunc -type {choice circle sin cos tan sinh cosh tanh asin acos atan log log10 exp sqrt rand}} {}
+                    }
+                    {Scale - -id mathval -label Mathval:} {}
+                    {Frame + -subpos ls -pos *} {
+                        {Dial - -id rotate -label Rotate:} {}
+                        {Checkbutton - -id tile} {:Tile}
+                    }
+                }
+                {row + -pos s} {
+                    {Scale - -id width  -label Width:} {}
+                    {Scale - -id height -label Height:} {}
+                    {Scale - -id slant -label Slant:} {}
+                    {Scale - -id skew -label Skew:} {}
+                    {Scale - -id rand -label Randomize:} {}
+                    {Scale - -id gamma -label Gamma:} {}
+                }
+            }
+        }
+        {Frame + -id tfram -pos *} {
+            {Text - -id txt -scroll * -pos *b} {}
+        }
+    }
+}

@@ -1,0 +1,153 @@
+#!/usr/bin/env wize
+
+script {
+ 
+    # Application demonstrating rounded frames.
+    # Should work in fallback mode with vanilla Tk 8.4 using:
+    #
+    #     wish ~/bin/gui round.gui
+   
+    #Mod ndebug
+
+    variable Opts {
+        { -tile     {}  "File to use as image" }
+    }
+    
+    array set _ { v,filt {} istxt 0 }
+    
+    proc Filter {_} {
+        upvar $_ {}
+        set t $(w,dwin)
+
+        if {$(istxt)} {
+            Text delete $t 1.0 end
+        } else {
+            TreeView delete $t all
+        }
+
+        set n 0
+        set tfmt {%Y-%m-%d %T}
+        set pat $(v,filt)
+        if {$pat == {}} {
+            set pat *
+        } elseif {[*strfirst {*?[]} $pat]<0} {
+            set pat *$pat*
+        }
+        set lst [lsort [glob -nocomplain ~/$pat]]
+        foreach i $lst {
+            incr n
+            if {![file exists $i]} continue
+            set ft [file tail $i]
+            set tt  [clock format [file mtime $i] -format $tfmt]
+            if {$(istxt)} {
+                Text insert $t end "[file size $i]\t$tt\t\t" {} $ft btitle "\n"
+            } else {
+                set data [list Size [file size $i] Modified $tt]
+                set ind [TreeView insert $t end [list $i] -data $data -label $ft]
+                if {$n == 1} {
+                    TreeView selection set $t $ind
+                }
+            }
+        }
+    }
+    
+    proc Main {_} {
+        upvar $_ {}
+        set t $(w,dwin)
+        set (istxt) [string equal [winfo class $t] Text]
+        
+        if {$(-tile) != {}} {
+            *catch {
+                set img [images lookup $(w,.) mybg]
+                photos conf $img -file $(-tile)
+            }
+        }
+
+        if {!$(istxt)} {
+            TreeView delete $t all
+            styles item $t column 0
+            foreach i {Size Modified} {
+                TreeView column insert $t end $i
+                styles item $t column $i
+            }
+        }
+        bind $(w,filt) <Return> [list $_ Filter]
+        Filter $_
+    }
+}
+
+style {
+    Toplevel {
+        = =defaults
+        @defimages {
+            allbg chalk
+            mybg blueweave
+        }
+        @deffonts { dfont {Helvetica -15 bold} }
+        *tile ^allbg
+    }
+    .rframe { -bg White }
+    .lsframe { *tile ^mybg}
+    Frame::round.lframe -
+    Frame::round.rframe { -tile ^mybg -scrolltile 2}
+    Entry - Button {
+        @pack { -pady 3 }
+    }
+    Entry { -relief solid }
+    .dwin {
+        -font {Helvetica -15}
+        *tile ^mybg -relief flat -bd 0 -highlightthick 0
+    }
+    Text.dwin {
+        -padx 0 -pady 0
+        @tags {
+            btitle { -font ^dfont }
+        }
+    }
+    TreeView.dwin {
+        -flat 1 -hideicons 1 
+        -selectbackground SteelBlue -nofocusselectbackground SteelBlue -linecolor white
+        -titlefont ^dfont
+        @eval {
+            TreeView style create textbox %W tt -font [%W cget -titlefont]
+            TreeView column conf %W 0 -style tt -title File
+        }
+    }
+    TreeView::column.dwin {
+        -relief raised -bd 0 -titleborderwidth 1
+        -command {blt::tv::SortColumn %W %C}
+    }
+    TreeView::column::Size.dwin {
+        -justify right
+    }
+}
+
+{Toplevel + -geom 800x600 -title "Rounded Frame Demo"} {
+    
+    {Panedwindow + -pos *} {
+        {pane +} {
+            {Frame + -id lframe -round 1 -pos l*} {
+                {Frame + -id lsframe -pos *} {
+                    Button Filter
+                    {Entry - -id filt -pos _} {}
+                }
+            }
+        }
+        {pane +} {
+            {Frame + -id rframe -round 1 -pos *l} {
+                eval {
+                    if {[info exists ::env(TCLTEXT)]
+                    || ![info exists ::blt_library]} {
+                        return {
+                            {Text - -id dwin -pos *} {}
+                        }
+                    } else {
+                        return {
+                            {TreeView - -id dwin -pos *} {}
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

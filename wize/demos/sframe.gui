@@ -1,0 +1,52 @@
+#!/usr/bin/env wize
+
+# "Scrollable frame demo"
+
+style {
+  Toplevel {
+      = =defaults
+      @defimages {
+          mbg chalk
+      }
+  }
+  Label { -bd 1 -relief raised @pack {-pady 3} }
+  Button { @pack {-pady 3} }
+  .lfr { *tile ^mbg -bd 1 -relief raised}
+  Text/lfr { -bg lightgray }
+  .stxt* {
+       @eval { Text insert %W end "Sidebar %I..." }
+       -width 15 -height 10
+  }
+  .mtxt {
+      @tags {
+          ttl {-background LightBlue -border 1 -relief raised}
+          fn  {-background LightGreen -border 1 -relief raised}
+      }
+      @eval {
+          Text insert %W end " Scrolled frame demo for: " ttl "\n" {} " $pd(script) " fn "\n\n[*fread $pd(script)]"
+      }
+  }
+}
+
+
+{Toplevel + -geom 500x400 -title "Scrolled frame demo"} {
+    
+    {Panedwindow + -pos *} {
+        {pane +} {
+            # "Note: Frame is made scrollable using the '-scroll' option"
+            {Frame + -id lfr -matte 5  -scroll * -subpos w -pos l* -tip "A scrollable Frame" } {
+                Label {26 buttons & text}
+                eval {
+                    set rc {}
+                    foreach i {A B C D E F G H I J K L M N O P Q R S T U V W X Y Z} {
+                        lappend rc Button "Button_$i" "Text - -id stxt[string tolower $i]" {}
+                    }
+                    return $rc
+                }
+            }
+        }
+        {pane +} {
+            {Text - -id mtxt -pos l*} {}
+        }
+    }
+}

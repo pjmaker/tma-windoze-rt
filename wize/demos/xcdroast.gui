@@ -1,0 +1,574 @@
+#!/usr/bin/env wize
+
+script {
+    # A mockup of xcdroast in Wize Tcl.
+    
+    array set _ {
+        navlast {}   exec:tracks {}   track:info {}
+    }
+    
+    proc UpdateDone {_ e v args} {
+        upvar $_ {}
+        puts "TI($($e)): $($v)"
+    }
+    
+    proc Update {_} {
+        # Load tracks.
+        upvar $_ {}
+        set v track:info
+        set e exec:track
+        set val [bgexec ${_}($e) -output ${_}($v) cdparanoia -Q 2>@1 &]
+        trace variable ($e) w [list $_ UpdateDone $e $v]
+        puts "VAL: $val"
+    }
+    
+    proc UpdateDone {_ data status } {
+        upvar $_ {}
+        puts "TI($status):\n <$data>"
+    }
+    
+    proc Update {_} {
+        # Load tracks.
+        upvar $_ {}
+        set v track:info
+        set e exec:track
+        set val [bgexec ${_}($e) -command [list $_ UpdateDone] cdparanoia -Q 2>@1 &]
+        puts "VAL: $val"
+    }
+    
+    proc NavSet {_ id} {
+        upvar $_ {}
+        if {$(navlast) != {}} {
+            Button conf $(w,$(navlast)) -relief raised
+        }
+        Button conf $(w,$id) -relief sunken
+        set (navlast) $id
+    }
+    
+    proc CD-Image_Info {_} {
+        upvar $_ {}
+        Tk::gui win map $_ map map_info
+        NavSet $_ nav_info
+    }
+    
+    proc CD/DVD-Image_Info {_} {
+        upvar $_ {}
+        Tk::gui win map $_ map map_info
+        NavSet $_ nad_info
+    }
+  
+    proc Read_Tracks {_} {
+        upvar $_ {}
+        Tk::gui win map $_ map map_tread
+        NavSet $_ nav_read
+    }
+    
+    proc Read_CD/DVD {_} {
+        upvar $_ {}
+        Tk::gui win map $_ map map_read
+        NavSet $_ nad_read
+    }
+
+    proc Write_Tracks {_} {
+        upvar $_ {}
+        Tk::gui win map $_ map map_twrite
+        NavSet $_ nav_write
+    }
+
+    proc Write_CD/DVD {_} {
+        upvar $_ {}
+        Tk::gui win map $_ map map_write
+        NavSet $_ nad_write
+    }
+    
+    proc Delete_Tracks {_} {
+        upvar $_ {}
+        Tk::gui win map $_ map map_tdelete
+        NavSet $_ nav_delete
+    }
+    
+    proc Verify_Tracks {_} {
+        upvar $_ {}
+        Tk::gui win map $_ map map_tverify
+        NavSet $_ nav_verify
+    }
+    
+    proc Verify_CD/DVD {_} {
+        upvar $_ {}
+        Tk::gui win map $_ map map_verify
+        NavSet $_ nad_verify
+    }
+    
+    proc Play_Audio_Tracks {_} {
+        upvar $_ {}
+        Tk::gui win map $_ map map_tplay
+        NavSet $_ nav_play
+    }
+
+    proc Master_Tracks {_} {
+        upvar $_ {}
+        Tk::gui win map $_ map map_tmaster
+        NavSet $_ nav_master
+    }
+
+    proc Back_To_Main_Menu {_} {
+        upvar $_ {}
+        Tk::gui win map $_ bmap mbuts
+        Tk::gui win map $_ map map_main
+        set (v,oplbl) [mc {Main}]
+        #NavSet $_ nav_main
+    }
+    
+    proc Back_To_Main_Menu. {_} {
+        Back_To_Main_Menu $_
+    }
+
+    proc Duplicate_CD/DVD {_} {
+        upvar $_ {}
+        Tk::gui win map $_ bmap buts
+        #NavSet $_ nav_read
+        set (v,oplbl) [mc "Duplicate CD"]
+        after 100 [list $_ CD/DVD-Image_Info]
+    }
+    
+    proc Ok {_} {
+        upvar $_ {}
+        Tk::gui win map $_ bmap mbuts
+        Tk::gui win map $_ map map_main
+        set (v,oplbl) [mc {Main}]
+        #NavSet $_ nav_main
+    }
+    
+    proc Cancel {_} {
+        Ok $_
+    }
+    
+    proc Save_Configuration {_} {
+        Ok $_
+    }
+    
+    proc Setup {_} {
+        upvar $_ {}
+        Tk::gui win map $_ bmap cbuts
+        set (v,oplbl) [mc "Setup"]
+        Tk::gui win map $_ map map_setup
+        #after 100 [list $_ CD-Image_Info]
+    }
+    
+    proc Create_CD/DVD {_} {
+        upvar $_ {}
+        Tk::gui win map $_ bmap dbuts
+        set (v,oplbl) [mc "Create CD"]
+        #NavSet $_ nav_read
+        after 100 [list $_ CD-Image_Info]
+    }
+
+    proc Exit {_} {
+        if {[tk_messageBox -message [mc "Ok to quit"] -type okcancel] != "ok"} return
+        ::Delete $_
+    }
+    
+    proc Main {_} {
+        #CD-Image_Info $_
+    }
+}
+
+
+{Toplevel + -id tl_info} {
+    {Labelframe + -label "Devices Setup" -pos _} {
+        {Frame + -subpos l} {
+            Label "Read Device"
+            Spinbox {}
+        }
+    }
+    {Frame + -subpos l* -pos *} {
+        {Frame +} {
+            {Labelframe + -label "CD Information" -pos *} {
+                {TreeView - -titles {# Tracks} -istable 1 -scroll * -pos *} {}
+                {grid + -colpos {e w_} -pos _} {
+                    {row +} { Label Type:   Entry {} }
+                    {row +} { Label Label:  Entry {} }
+                    {row +} { Label Size:   Entry {} }
+                }
+            }
+        }
+        {Labelframe + -label "Image Information"} {
+            {TreeView - -titles {# Images} -istable 1 -scroll * -pos *} {}
+            {grid + -colpos {e w_} -pos _} {
+                {row +} { Label "Total Size:"   Entry {} }
+            }
+        }
+    }
+    {Frame + -subpos l* -pos _} {
+        Button "Query CDDB"
+        Button "Edit titles for CD-Text"
+        Button "Update"
+    }
+}
+
+{Toplevel + -id tl_tplay} {
+    {TreeView - -titles {# Nr Tracktitle Lenght Filename} -istable 1 -scroll * -pos *} {}
+}
+
+{Toplevel + -id tl_read} {
+    {Labelframe + -label "Devices Setup" -pos _} {
+        {grid + -pos l*}  {
+            {row +} { Label "Read Device:" Spinbox {} }
+            {row +} { Label "Image Directory:" Spinbox {} }
+        }
+        {Frame + -pos l*} {
+            {Frame + -subpos l} {
+                Label "Speed:"
+                Spinbox {}
+            }
+        }
+    }
+    {Frame + -subpos l* -pos *} {
+        {Frame + -subpos *} {
+            {Labelframe + -label "CD/DVD Information"} {
+                {grid + -colpos {e w_} -pos _} {
+                    {row +} { Label Type:   Entry {} }
+                    {row +} { Label Label:  Entry {} }
+                    {row +} { Label Size:   Entry {} }
+                    {row +} { Label Tracks:   Entry {} }
+                }
+            }
+            {Labelframe + -label "Read Options" -pos _} {
+                {Checkbutton} "Do index scan"
+            }
+        }
+        {Labelframe + -label "Image Information"} {
+            {grid + -colpos {e w_} -pos _} {
+                {row +} { Label "File Prefix:"   Entry {} }
+                {row +} { Label "Free Space:"   Entry {} }
+                {row +} { Label "Biggest Block Avail:"   Entry {} }
+            }
+        }
+    }
+    {Frame + -subpos l* -pos _} {
+        Button "Read all tracks"
+        Button "Update"
+    }
+}
+
+{Toplevel + -id tl_tread -useid tl_read} {}
+
+{Toplevel + -id tl_verify} {
+    {Frame + -pos *} {
+        {Labelframe + -label "Devices Setup" -pos _} {
+            {grid + -pos l*}  {
+                {row +} { Label "Read Device:" Spinbox {} }
+                {row +} { Label "Image Directory:" Spinbox {} }
+            }
+            {Frame + -pos l*} {
+                {Frame + -subpos l} {
+                    Label "Speed:"
+                    Spinbox {}
+                }
+            }
+        }
+        {Frame + -pos *l} {
+            {Labelframe + -label "CD Information" -pos *} {
+                {TreeView - -titles {# Tracks} -istable 1 -scroll * -pos *} {}
+                {grid + -colpos {e w_} -pos _} {
+                    {row +} { Label Type:   Entry {} }
+                    {row +} { Label Label:  Entry {} }
+                    {row +} { Label Size:   Entry {} }
+                    {row +} { Label Tracks:   Entry {} }
+                }
+            }
+            {Labelframe + -label "Verify Options" -subpos w -pos *} {
+                Checkbutton "Don't verify audio tracks"
+                Checkbutton "Abort after verify fail"
+            }
+        }
+        {Labelframe + -label "Tracks to verify" -pos *l} {
+            {grid + -colpos {e w_} -pos _} {
+                {row +} { Label "TOC file:"   Spinbox {} }
+                {row +} { Label Type:   Entry {} }
+                {row +} { Label Label:  Entry {} }
+                {row +} { Label Size:   Entry {} }
+                {row +} { Label Tracks:   Entry {} }
+            }
+        }
+    }
+    {Frame + -subpos l_ -pos _} {
+        Button "Verify Tracks"
+        Button "Update"
+    }
+}
+
+{Toplevel + -id tl_tverify -useid tl_verify} {}
+
+{Toplevel + -id tl_write} {
+    {Labelframe + -label "Devices Setup" -pos _} {
+        {grid + -pos l*}  {
+            {row +} { Label "Image Directory:" Spinbox {} }
+            {row +} { Label "Read Device:" Spinbox {} }
+        }
+        {Frame + -pos l*} {
+            {Frame + -subpos l} {
+                Label "Speed:"
+                Spinbox {}
+            }
+        }
+    }
+    {Tabset + -subpos * -pos *} {
+        {tab + -label "Layout tracks"} {
+            {Frame + -pos * -subpos l*} {
+                {Labelframe + -label "Tracks to write" -subpos l*} {
+                    {TreeView - -titles {# Images} -istable 1 -scroll * -pos *} {}
+                    {Frame + -subpos l -pos _} {
+                        Label Size:
+                        {Entry - -pos l_} {}
+                    }
+                    {Frame + -subpos l_ -pos _} {
+                        Button "All"
+                        Button "None"
+                        Button "Remove"
+                    }
+                }
+                {Labelframe + -label "Image information"} {
+                    {TreeView - -titles {# Images} -istable 1 -scroll * -pos *} {}
+                    {Frame + -subpos l -pos _} {
+                        Label Selected:
+                        {Entry - -pos l_} {}
+                    }
+                    {Frame + -subpos l_ -pos _} {
+                        Button "All"
+                        Button "None"
+                        Button "Remove"
+                    }
+                }
+            }
+            {Frame + -subpos l* -pos _} {
+                Button "Accept track layout"
+            }
+        }
+        {tab + -label "Write tracks" -subpos l*} {
+            {Frame + -pos * -subpos l*} {
+                {Labelframe + -label "Tracks to write"} {
+                    {TreeView - -titles {# Images} -istable 1 -scroll * -pos *} {}
+                    {Frame + -subpos l -pos _} {
+                        Label Size:
+                        {Entry - -pos l_} {}
+                    }
+                    Checkbutton "Write as multisession"
+                }
+                {Labelframe + -label "Write parameters"} {
+                    {grid + -subpos l -pos _} {
+                        {row +} { Label "Disk Type:" {Frame + -subpos l_} { Spinbox {} Button ATIP-Info } }
+                        {row +} { Label "Write Mode:" {Spinbox - -pos _} {} }
+                    }
+                    {Frame + -subpos w -pos *} {
+                        Checkbutton "Simulation write"
+                        Checkbutton "Eject after write"
+                        Checkbutton "Pad tracks"
+                        Checkbutton "Do not fixate after write"
+                        Checkbutton "Buffer underrun protection"
+                        Checkbutton "Write CD-Text"
+                        Button "Edit titles"
+                        {Button - -pos be} "Advanced options"
+                    }
+                }
+            }
+            {Frame + -subpos l* -pos _} {
+                Button "Write tracks"
+                Button "Fixate CD-R/RW only"
+                Button "Blank CD/DVD+-RW"
+            }
+        }
+    }
+
+}
+
+{Toplevel + -id tl_twrite -useid tl_write} {}
+
+{Toplevel + -id tl_tdelete} {
+    {Labelframe + -label "Devices Setup" -pos _} {
+        {Frame + -subpos l} {
+            Label "Image Directory"
+            Spinbox {}
+        }
+    }
+    {Frame + -pos *} {
+        {TreeView - -titles {# Nr "Track title" Length Filename} -istable 1 -scroll * -pos *} {}
+        {grid + -colpos {e w_}} {
+            {row +} { Label "Size of select track:"   Entry {} }
+            {row +} { Label "Free space:"  Entry {} }
+        }
+    }
+    {hsep - -pos _} {}
+    {Frame + -subpos l* -pos _} {
+        Button "Select all"
+        Button "Select none"
+        Button "Delete selected tracks"
+    }
+}
+
+{Toplevel + -id tl_main} {
+    {Label - -pos *} {XCDBlaster Prototype}
+}
+
+{Toplevel + -id tl_setup} {
+    {Tabset + -subpos * -subpos l* -pos *} {
+        {tab + -label "Device scan" -pos *} {
+            {TreeView - -titles {Type "Device-Id" Vendor Model Rev} -istable 1 -scroll * -pos *} {}
+            {Frame + -subpos l* -pos _} {
+                Button "Rescan devices"
+                Button "Manually add device"
+            }
+        }
+        {tab + -label "CD/DVD settings" -subpos l*} {
+        }
+        {tab + -label "HD settings" -subpos l*} {
+        }
+        {tab + -label "Miscellaneous" -subpos l*} {
+        }
+        {tab + -label "Options" -subpos l*} {
+        }
+    }
+}
+
+{Toplevel + -id tl_tmaster} {
+    {Labelframe + -label "Devices Setup" -pos _} {
+        {grid + -pos l*}  {
+            {row +} { Label "Image Directory:" Spinbox {} }
+            {row +} { Label "Read Device:" Spinbox {} }
+        }
+        {Frame + -pos l*} {
+            {Frame + -subpos l} {
+                Label "Speed:"
+                Spinbox {}
+            }
+        }
+    }
+    {Tabset + -subpos * -subpos l* -pos *} {
+        {tab + -label "Layout tracks" -subpos l*} {
+            {Labelframe + -label "CD Information"} {
+                {TreeView - -istable 1 -scroll * -pos *} {}
+                {grid + -colpos {e w_} -pos e} {
+                    {row +} { Label "Used/Available:"   Entry {} }
+                }
+                {Frame + -subpos l* -pos _} {
+                    Button "Remove"
+                    Button "Redirect"
+                }
+                {Button - -pos _} "Update session view"
+            }
+            {Labelframe + -label "File/Directory View"} {
+                {TreeView - -scroll * -pos *} {}
+                {Entry - -pos _} {}
+                {Frame +} {
+                    Checkbutton "Display directories only"
+                    Checkbutton "Display hidden files"
+                }
+                {Frame + -subpos l* -pos _} {
+                    Button "Add"
+                    Button "Exclude"
+                }
+            }
+        }
+        {tab + -label "ISO9660 options" -defer 1 -subpos * -pos *} {
+            {Labelframe + -label "Detailed ISO9660 option"} {
+                {grid + -colpos {w w} -pos _} {
+                    {row +} { Checkbutton "Rock Ridge (anonymous)" Checkbutton "Allow 31 character ISO-filenames" }
+                    {row +} { Checkbutton "Rock Ridge (backup)" Checkbutton "Allow SO-files with a starting period" }
+                    {row +} { Checkbutton "Joilet extension (for Windows)" Checkbutton "Allow 103 character Joilet filenames" }
+                    {row +} { Checkbutton "Joilet extension (for Windows)" Checkbutton "Allow untranslated filenames" }
+                    {row +} { Checkbutton "Do not use deep directory relocatoin" Checkbutton "Do not include backup files" }
+                    {row +} { Checkbutton "Generate TRNS.TBL files" Checkbutton "Hide TRNS.TBL from Joilet tree" }
+                }
+                {Frame + -subpos l -pos _} {
+                    Label "Input charset:" Spinbox {}  Label "Output charset:" Spinbox {}
+                }
+                {Frame + -subpos l* -pos _} {
+                    Button "Advanced options"
+                    Button "Save current settings as default"
+                }
+            }
+        }
+        {tab + -label "Boot options"} {
+        }
+        {tab + -label "ISO9660 header"} {
+        }
+        {tab + -label "Create session/image"} {
+        }
+    }
+}
+
+{Toplevel + -geom 800x600} {
+    style {
+        TreeView::column::# { -width 15 }
+        TreeView { -bg White -bd 2 -height 150}
+        Labelframe {
+            -pady 6 -padx 6
+        }
+        Labelframe -
+        TreeView -
+        Entry - Spinbox {
+            @@ { -pad 3,3 }
+        }
+        Entry - Spinbox { -highlightthickness 0 }
+        Button/dbuts -
+        Button/mbuts -
+        Button/cbuts -
+        Button/buts {
+            -pady 10
+        }
+        .oplbl { -pady 3 -relief sunken -font {Courier -20 bold}}
+        .buts { -pady 1c }
+
+    }
+    {Panedwindow + -pos *} {
+        {pane +} {
+            {mapwin + -id bmap -pos _l} {
+                {Frame + -id mbuts -subpos _ -pos *} {
+                    {Button - -id nam_setup} "Setup"
+                    {Button - -id nam_dup}      "Duplicate CD/DVD"
+                    {Button - -id nam_create}   "Create CD/DVD"
+                    {Button - -id nam_exit}     "Exit"
+                }
+                {Frame + -id cbuts -subpos _ -pos *} {
+                    {Button - -id nac_info}     "Save Configuration"
+                    {Button - -id nac_cancel}   "Cancel"
+                    {Button - -id nac_back}     "Ok"
+                }
+                {Frame + -id buts -subpos _ -pos *} {
+                    {Button - -id nad_info -msg "CD/DVD-Image_Info"}     "CD-Image Info"
+                    {Button - -id nad_read}     "Read CD/DVD"
+                    {Button - -id nad_verify}   "Verify CD/DVD"
+                    {Button - -id nad_write}    "Write CD/DVD"
+                    {Button - -id nad_back}     "Back To Main Menu."
+                }
+                {Frame + -id dbuts -subpos _ -pos *} {
+                    {Button - -id nav_info}     "CD-Image Info"
+                    {Button - -id nav_read}     "Read Tracks"
+                    {Button - -id nav_verify}   "Verify Tracks"
+                    {Button - -id nav_play}     "Play Audio Tracks"
+                    {Button - -id nav_master}   "Master Tracks"
+                    {Button - -id nav_write}    "Write Tracks"
+                    {Button - -id nav_delete}   "Delete Tracks"
+                    {Button - -id nav_back}     "Back To Main Menu"
+                }
+            }
+        }
+        {pane +} {
+            {Label - -id oplbl -pos _} {Main}
+            {mapwin + -id map -pos *} {
+                {Frame + -id map_main -useid tl_main -pos *} {}
+                {Frame + -id map_setup -useid tl_setup -pos *} {}
+                {Frame + -id map_info -useid tl_info -pos *} {}
+                {Frame + -id map_read -useid tl_read -pos *} {}
+                {Frame + -id map_tread -useid tl_tread -pos *} {}
+                {Frame + -id map_verify -useid tl_verify -pos *} {}
+                {Frame + -id map_tverify -useid tl_tverify -pos *} {}
+                {Frame + -id map_write -useid tl_write -pos *} {}
+                {Frame + -id map_twrite -useid tl_twrite -pos *} {}
+                {Frame + -id map_tdelete -useid tl_tdelete -pos *} {}
+                {Frame + -id map_tmaster -useid tl_tmaster -pos *} {}
+                {Frame + -id map_tplay -useid tl_tplay -pos *} {}
+            }
+        }
+    }
+}

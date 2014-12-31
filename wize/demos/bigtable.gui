@@ -1,0 +1,214 @@
+#!/usr/bin/env wize
+
+script {
+    # Demo to display columns of vectors in a Tktable.  This can handle
+    # tens of millions of cells because it does no auto-sizing.
+    # It also demonstrates GUI's new builtin Table -edit opt (using entry)
+    #
+    # BSD Copyright 2007 - Peter MacDonald   (See http://pdqi.com/)
+    # RCS: @(#) $Id: bigtable.gui,v 1.9 2010/04/02 03:25:51 pcmacdon Exp $
+    
+    variable Opts {
+        { -size     100000   "Size of vectors" }
+    }
+    
+    *array _ {
+        vectors {A B C D}
+    }
+    
+    # String values to override vectors.
+    *array Data {
+        0,0 "Fixed"
+        0,1 "Varying"
+        0,2 "Fixed+\nVarying"
+        0,3 "Running\nTotal"
+    }
+
+    proc GetCell {_ cell} {
+        # Return value for the cell.
+        upvar $_ {}
+        variable Data
+        if {[info exists Data($cell)]} {
+            return $Data($cell)
+        }
+        foreach {r c} [split $cell ,] break
+        if {$c >= [llength $(vectors)]} return
+        if {$c < 0 || $r < 0} {
+            # Cell is in title area.
+            if {$c < 0 && $r < 0} return
+            if {$r < 0} { return [lindex $(vectors) $c] }
+            return $r
+        }
+        set vec [lindex $(vectors) $c]
+        if {$r>=[$vec length]} {
+            return
+        }
+        set val [$vec index $r]
+        return [format %.2f $val]
+    }
+    
+    proc Recalc {_} {
+        # Reevaluate the vector expressions and refresh.
+        upvar $_ {}
+        set t $(w,tbl)
+        vector op expr C A+B
+        vector op expr D C+last; # Running total.
+        Table conf $t -cols [Table cget $t -cols]
+    }
+    
+    proc EditEnd {_ row col} {
+        # Handle edit completion.
+        variable Data
+        upvar $_ {}
+        set vec [lindex $(vectors) $col]
+        set t $(w,tbl)
+        set cell $row,$col
+        set oval [Table set $t $cell]
+        set e $t.edit
+        switch -- [winfo class $e] {
+            Entry - Spinbox {
+                set val [$e get]
+            }
+            Text {
+                set val [$e get 1.0 end]
+            }
+        }
+        if {$row<0 || $col<0} {
+            set Data($cell) $val
+            return
+        }
+        #.Msg "DONE: $_ $cell = $val ($oval)"
+        if {[info exists Data($cell)]} {
+            set Data($cell) $val
+            Table set $t $cell $val
+            return
+        }
+        if {$row<0 || $col<0} {
+            Table set $t $cell $val
+            return
+        }
+        set erv "invalid value: $val"
+        if {[string equal $val -] || [catch {
+            $vec index $row $val
+        } erv]} {
+            tk_messageBox -message $erv -icon error -parent $(w,.)
+            return
+        }
+        Table set $t $cell $val
+        Recalc $_
+    }
+    
+    proc IsValid {_ e str row col} {
+        # Validate input for the cell.
+        upvar $_ {}
+        variable Data
+        if {[info exists Data($row,$col)] || $row<0 || $col<0} {
+            return 1
+        }
+        if {[string equal $str ""]} { return 1 }
+        if {[string equal $str -]} { return 1 }
+        if {![string is double $str]} { return 0 }
+        # Restrict domain to 32bit integer range.
+        if {abs(int($str)) > 0x7fffffff} { return 0 }
+        set ext [lindex [split $str .] 1]
+        if {[string length $ext]>2} { return 0 }
+        return 1
+    }
+    
+    proc EditStart {_ row col} {
+        # Additional setup for the non-builtin edit.
+        upvar $_ {}
+        set e $(w,tbl).edit
+        set v [list $_ IsValid $e %P $row $col]
+        set wc [winfo class $e]
+        if {$wc == "Entry" || $wc == "Spinbox"} {
+            $e conf -validate key -validatecommand $v -invcmd bell
+        }
+    }
+
+    proc Main {_ args} {
+        # Standard entry point.
+        upvar $_ {}
+        set t $(w,tbl)
+        if {[info vars [namespace current]::A] != {}} {
+            error "bigtable already running"
+        }
+        if {[llength $args]} {
+            tclLog "Ignoring extra arguments"
+        }
+        set siz $(-size)
+        if {!([string is integer -strict $siz] && $siz>0 && $siz<10000000)} {
+            tclLog "Ignoring bad size: $siz"
+            set siz [set (-size) 10000]
+        }
+        foreach i $(vectors) {
+            vector create ${i}($siz)
+        }
+
+        Table height $t 0 2
+        Table conf $t -multiline 1 -variable [namespace current]::Data -cols [expr {1+[llength $(vectors)]}] -command [list $_ GetCell %C]
+        styles item $t tag title
+        Table tag coltag $t inputs 0 1
+        Table tag coltag $t results 2 3
+        foreach i [array names Data] {
+            Table tag celltag $t subtitle $i
+        }
+        styles item $t tag inputs
+        styles item $t tag results
+        styles item $t tag subtitle
+
+        # Change edit to use an embedded entry widget.
+        tk::table::EditSetup $t [list -autonl 1 -notcols {2 3} -edtitles cols -tab {-endcol 1}]
+        bind $t <<TableEditStart>> [list $_ EditStart %y %x]
+        bind $t <<TableEditEnd>> [list $_ EditEnd %y %x]
+        
+        set s1 [expr {$siz-1}]
+        vector op seq A 0 $s1
+        vector op seq B 0 [expr {$s1*2}] 2
+        Recalc $_
+        Table conf $t -cols [expr {1+[llength $(vectors)]}] -rows [expr {1+$siz}]
+        set ttl [wm title $(w,.)]
+        wm title $(w,.) "$ttl $siz rows"
+    }
+    
+    proc Cleanup {_} {
+        # Standard cleanup routine.
+        upvar $_ {}
+        set v $(vectors)
+        set (vectors) {}
+        foreach i $v {
+            *catch { vector destroy $i }
+        }
+    }
+    
+}
+
+style {
+    Toplevel {
+        @deffonts {
+            subfnt {Verdana,Helvetica -12 bold}
+        }
+    }
+    .tbl {
+        -roworigin -1 -colorigin -1 -bg White -multiline 0
+        -cache 0 -titlerows 1 -titlecols 1 -ipadx 4 -anchor e
+        -colwidth 15 -selecttitle 0
+        @eval {
+            Table width %W -1 10
+            Table tag conf %W active -bg LightBlue
+        }
+
+    }
+    Table::tag::title    { -border 1 -relief raised -bg #666666 -anchor c }
+    Table::tag::results  { -bg SteelBlue }
+    Table::tag::subtitle { -font ^subfnt }
+    Table::tag::inputs   { }
+    
+}
+
+{Toplevel + -title "Big Table Demo"} {
+   {Table - -id tbl -scroll * -pos *} {}
+   
+   # "Could do setup here instead"
+   {#Table - -id tbl -scroll * -altedit {-notcols {2 3} -edtitles cols -tab {-endcol 1}} -pos *} {}
+}

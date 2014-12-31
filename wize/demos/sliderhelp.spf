@@ -1,0 +1,183 @@
+{
+    {Slider Help}
+    {
+        '''Slider''' is a wiki markup ''presentation'' program that supports:
+        >
+        * '''fonts''', %%red%%colors%%%% and images ^^~/tmp/img/misc16/trees.gif^^
+        * background tiles, shaped borders, and embedded windows.
+        * small footprint as it uses the Tk text widget.
+        >
+        * basic keys are:
+        ** '''Escape''' - Quit
+        ** '''Tab''' - Toggle fullscreen
+        ** '''Space/Mouse-3''' - Next slide
+        ** '''Backspace''' - Previous slide
+        ** '''Return''' - Next slide (forced)
+        ** '''Control-l''' - List of slides
+        ** '''F1/?''' - This help
+        >
+        Type <Control-e> now to see the markup for these help pages.
+    }
+    init {
+        -fontscale -2
+    }
+    options {
+        # "Local options, but they stay in force."
+        -gradient {DarkTurquoise White 1500 5}
+        -outertile tile/blurred-teal.gif
+    }
+    allopts {
+        # "Global options."
+        -bullets { icon16/mvforward.gif misc16/key_enter.gif}
+    }
+}
+{
+    {Page Format}
+    {
+        Input to '''slider''' is a list of pages in plain text wiki-like markup.
+        A presentation consists of a ''pagelist'' wherein
+        each page is a list with at least 2 elements.
+        The first is the ''title'' and the second contains ''content''.
+
+        Slides consists of plain text input, or
+        one of the following markup followed by a space character:
+        >
+        * '''*''' : level 1 bullets 
+        * '''**''' : level 2 bullets
+        * '''***''' : level 3 bullets
+        * '''****''' : level 4 bullets
+        * '''|''' : Centered text
+        * '''>''' : Preformated text inside '''{}''' or output a line-space
+        * '''^''' : Insert an image.
+        * '''#''' : a comment
+        * '''!''' : Evaluate Tcl with substitutions for %W and %_
+    }
+}
+{
+    {Markup in a Line}
+    {
+        Within a line the following markup can be used:
+        >
+        * italic/bold : eg. ``''italic'', '''bold''', ''''bold+italic''''``
+        * images : eg. ``^^myimg.gif^^``
+        * color/tags:  eg. ``%%red%%My first colors%%%%``
+        * tcl : eg. ``!!MyProc %W!!``
+        * escape : double backquote, eg:
+        > {
+            Here is my ``first ^^escape^^``
+        }
+    }
+}
+
+{
+    {Slide Parameters} {
+        Additional sections may be provided as name/value pairs,
+            * '''init''' - options initialization
+            * '''options''' - options for the page
+            * '''allopts''' - options for all pages (only on first page)
+            * '''eval''' - code to eval for the page
+            * '''alleval''' - code to eval for every page (only on first page)
+    }
+}
+{
+    options {
+        Options contain the following:
+        * '''-fontscale''' : scaling for fonts
+        * '''-hdrleft''' : header text to use on left
+        * '''-hdrimgleft''' : header image file to use on left
+        * '''-hdrright''' : header text to use on right
+        * '''-hdrimgright''' : header image to use on right
+        * '''-tile''' : image to use for background tile.
+        * '''-outertile''' : an image to use for tiling the outside.
+        * '''-gradient''' : colors to use for a gradient (if no image).
+        * '''-bullets''' : a list of 1-4 image files to use for bullets. Bullets can be blank to restore the defaults.
+        * '''-hide''' : unhide level 1 bullets, one at a time (2=animated).
+    }
+    options { -hide 2 }
+}
+{
+    {Example}
+    {
+        Here is an example:
+        * Level 1a
+        * Level 1b Really '''long''' text that %%red%%should wrap%%%% in a narrow window we hope!
+        * Level 1c
+        ** Level 2a
+        ** Level 2b Really '''long''' text that %%red%%should wrap%%%% in a narrow window we hope!
+        ** Level 2c
+        *** Level 3a
+        *** Level 3b Really '''long''' text that %%red%%should wrap%%%% in a narrow window we hope!
+        *** Level 3c
+        **** Level 4a
+        **** Level 4b Really '''long''' text that %%red%%should wrap%%%% in a narrow window we hope!
+        **** Level 4c
+    }
+    options {
+        -bullets { {} {} {} {} }
+    }
+
+}
+{
+    {File/Directory Details}
+    {
+        Slider files can end in any suffix.  Typically '''.spf''' or '''.txt'''
+        is used.  Moreover, a presentation can also be run from a '''.zip'''
+        file.  Just zip it up with the file name of ''main.spf'', ''main.txt''
+        or the same name as the zip file prefix.  For example
+        
+        > {
+            zip -r mypres.zip mypres.spf icons
+            slider mypres.zip
+        }
+        >
+        Alternatively, the zip file can contain a single directory containing
+        '''main.spf'''.
+    }
+}
+{
+    Icons/Images
+    {
+        Icons can be provided in the same directory as the main file.
+        Alternatively, the subdirectory '''icons''' will also be searched.
+        >
+        Slider has access to all of the icons in the '''wize''' directory
+        '''/zvfs/img'''.  These can be viewed with:
+        
+        > {
+            wize / Apps/Icons
+        }
+    }
+}
+{
+    {Slider Extra Keys}
+    {
+        Following are additional key bindings:
+        >
+        * '''Plus/Minus/Equal''' - Resize fonts
+        * '''Control-Shift-Up/Down''' - gamma adjust background
+        * '''Control-Next/Prior''' - Page back/forward
+        * '''Control-Home/End''' - Move to start/end.
+        * '''Control->Left/Right''' - Scroll window
+        * '''Control-r''' - Reload slides file
+        * '''Control-e''' - Edit slide file
+        * '''Control-o''' - Open a slide file
+        * '''Control-s''' - Save to ascii (after viewing all)
+    }
+}
+{
+    {The End}
+    
+    {
+        | Slider is BSD copyright 2010
+        
+        | By ''Peter MacDonald''
+        > {
+        
+        
+        
+        }
+        | See '''http://pdqi.com''' for more on slider.
+    }
+}
+
+

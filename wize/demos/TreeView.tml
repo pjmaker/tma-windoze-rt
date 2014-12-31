@@ -1,0 +1,164 @@
+(:toc:)
+!TreeView
+
+[[Path:/man/mann/treeview.html"manpage for TreeView"|TreeView ]] is
+a full featured hierarchical table/[[tree]] widget that
+handles
+10s of thousands of rows
+with relative ease.
+
+Here is an example that displays a list of files:
+
+[@
+pack [treeview .t]
+foreach i [glob *] {
+    .t insert end [list $i]
+}
+@]
+
+''Note that by default TreeView insert treats a key as a list!''
+
+Here are a couple of screen shots demonstrating the
+versatility of TreeView:
+
+%newwin height=100px%[[Path:/w/Download/BLT/treeview1.gif|Path:/w/Download/BLT/treeview1.gif]] \
+%newwin height=100px%[[Path:/w/Download/BLT/treeview2.gif|Path:/w/Download/BLT/treeview2.gif]] \
+%newwin height=100px%[[Path:/w/Download/BLT/treeview3.gif|Path:/w/Download/BLT/treeview3.gif]] \
+
+
+
+!!Features
+
+The most distinguishing feature of TreeView is its
+automatic rows and column sizing.
+Programmers need only worry about inserting data.
+The widget manages display
+sizing automatically.
+
+The features:
+
+* By default, auto-sizes column widths and row heights.
+* Hiding and moving of columns, rows and trees.
+* Two display modes: ''flat'' and ''tree''.
+* Sortable columns or trees.
+* Tree data is stored externally (in a [[Path:/man/mann/tree.html|blt::tree]]).
+* Multiple treeviews may share all or part of one tree.
+* Simple to implement dynamic sub-trees.
+* Supports multiple style types, including:
+** textbox: text cell with optional images.
+** checkbox: a boolean value.
+** combobox: a multi-choice value.
+** barbox: numeric value with progress bar.
+** windowbox: arbitrary embedded windows.
+* Styles can be applied to cols, rows and/or cells
+* An -altstyle option for alternating rows (bgcolor, etc).
+* Background image-tile: columns, styles and/or widget.
+* Drop shadow text.
+* Powerful builtin cell editing.
+
+
+!!Alternate Row Style
+
+Alternating row colors is a
+common effect seen in tables.
+The following code snipet shows how easy it is
+to do this in treeview:
+
+
+[@
+.t style create textbox alt -bg LightBlue
+.t conf -altstyle alt
+@]
+
+!!Non-List Keys
+
+By default TreeView takes a list key on insert.
+Alternatively, a delimiter character can specified.
+In the following example we display files
+in 2 directory levels within a tree:
+
+[@
+pack [treeview .t -autocreate 1 -separator /]
+foreach i [glob  */*] {
+    .t insert end $i
+}
+eval .t open [.t find -name CVS]; # Open all CVS dirs.
+
+@]
+
+
+!!Data Trees
+
+TreeView data is stored externally within a tree.  This means
+data can also be created externally and then attached to TreeView, eg.
+
+[@
+
+*tree new t = {
+    = Age Salary
+    Managers {
+        = Age Salary Title
+        Tina 29 10000 President
+        Tom  28 8000 VP
+    }
+    Staff {
+        # Inherit the titles of parent ie. "Age Salary".
+        Mary 10 6000
+        Sam  10 6000
+    }
+}
+pack [treeview .t -tree $t -width 600 -height 600] -fill both -expand y
+eval .t col insert end [lsort [$t keys nonroot]]
+.t open all
+puts [$t incr 0->Managers->Tina Age]
+
+@]
+
+See [[Tree]] for more details.
+
+!!TableLoad
+
+TableLoad is one of the utility functions included with
+TreeView.  It simplifies loading tables
+of raw data.
+Here is a (Unix) example from the command-line:
+
+[@
+wize /zvfs/blt2.4/tvutil.tcl -eval 'exec ps -Alwj' -split 1 -ititles 1 -refresh 2000
+@]
+
+or
+
+[@
+wize /zvfs/wiz/eval.tcl '::blt::tv::TableLoad -eval {exec ps -Alwj} -split 1 -refresh 2000 '
+@]
+
+
+[[#demand]]
+!!Demand Loading
+
+Data can be demand loaded into a treeview tree 
+as it becomes visible or scrolls into view, eg.
+
+[@
+pack [treeview .t] -fill both -expand y
+set t [tree create]
+foreach i {A B C} {
+    .t col insert end $i -fillcmd [list FillMe $t $i]
+}
+
+proc FillMe {t col id} {
+    return $col$id
+}
+
+$t populate 10000
+.t conf -tree $t
+@]
+
+One use for this is to load the rowids for an [[TreeSql|sqlite]]
+database table, and then loading data rows on demand.
+
+See also [[TreeTrace#demand|Tree ''demand loading'']].
+
+
+

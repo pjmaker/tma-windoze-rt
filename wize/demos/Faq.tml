@@ -1,0 +1,163 @@
+(:toc:)
+
+!Wize Frequently Asked Questions
+
+!General
+
+!! What is Wize?
+
+Wize is a reasonably complete GUI development and deployment
+environment for Linux and Windows.  It is based on
+enhanced versions of Tcl/Tk and BLT.
+For more details see [[What|What Is Wize]]
+
+!! What License does Wize use?
+
+[[License|BSD]]
+
+!! Where can I get Wize from?
+
+''http://sourceforge.net/projects/wize/''.
+See [[Getting|Getting Wize]] for details.
+
+
+!! How is Wize different from vanilla Tcl/Tk?
+
+Wize implements many desirable
+[[TclTkMissing|features missing from Tck/Tk]].
+In particular, it integrates a highly modified [[Blt|BLT]]
+with other [[Extensions|extensions]].
+Virtually all widgets now support tiling of backgrounds and/or items.
+Wize also provides builtin [[Validation]] via the
+''-Wall'' option.
+See [[Features]] for more detail.
+
+
+!! How does Wize differ from TclKit?
+
+Wize uses sqlite as it's database and
+the ''zip archive'' format exclusively for packaging.
+All this is in addition to the above.
+
+!! What is a ''wizapp''?
+
+A [[WizApps|wizapp]] is simply a ''.zip'' archive
+containing a ''main.tcl'' which
+launches the Tcl application.
+
+!! Can a ''.zip'' (wizapp) be invoked as an OS command?
+
+Yes.  Wize can use soft links to indirectly
+[[Running|run a ''.zip'']] file,
+    just as you would a normal compiled command or script.
+    On invocation Wize checks if this was
+    via a soft link, and if so looks for
+    a .zip whose name is the same as the link.
+
+    For example, if ''foo.zip'' is in the Wize directory
+    and there is a link '''foo -> wize'''
+    then invoking ''foo'' runs ''wize'', which mounts '''foo.zip'''
+    and sources it's ''main.tcl''.
+
+    To create a link for this use: ''wize / install foo.zip''.
+    Note this will require write access to the directory containing '''wize'''.
+
+
+    !! What are ''wizpaks''?
+
+    In short they are [[Wizpaks|add-ons]].
+
+    !! How do I (re)build Wize?
+
+    If you can't run the binaries on sourceforge,
+    check the code out from CVS on http://sourceforge.net/projects/wize.
+    Then see ''wize2/wize/README''.
+
+    Note, building for windows requires numerous (undocumented)
+    manual steps.
+
+    !! How can I modify or add builtin scripts to Wize?
+
+    Just ''unzip'' the wize binary
+    into a directory, do modifications and then re-''zip'' back
+    up.  If you don't have the unzip program, you can use
+    ''wize / Zip/Unzip'' etc, instead.
+
+    !! Why is the Wize executable so large (12-15 Meg)?
+
+    Current binary releases include debugging symbols.
+    You can eliminate the 5-8 Meg of symbols in one of two ways:
+
+    * Rebuild after setting '''DBGSYMS=0''' in the Makefile.
+    * Use ''Zip/'': Unzip, TruncZip, ''strip -g'', then PiggyZip.
+
+    !! Is HTML supported?
+
+    Yes and No.
+    Tkhtml 3.0 is builtin to Wize.  Thus it can be used to run the hv3 browser
+    via '''wize hv.zip'''. However,
+    Tkhtml 3.0 has a number of
+    known instabilities and thus is in a ''use at your own risk'' state.
+    Nevertheless, this could be acceptable for just browsing
+    local documentation.
+
+    !! Does wize support ''ttk::'' widgets?
+
+    Yes.
+
+    ! Usage
+
+    !! Where do I start?
+
+    Run '''wize /'''.  (See [[Admin]] and [[DevStart]])
+
+
+    !! Can I eval Tcl directly from the command-line?
+
+    Yes, like this:
+    [@
+    wize /zvfs/wiz/eval.tcl 'pack [button .b -text "Hello World"]'
+    @]
+
+
+    !! Can I run [[Ted/HomePage|Ted]] directly from the command-line?
+
+    Sure, here are 3 different ways:
+
+    [@
+    wize / Apps/Ted ...
+    wize /zvfs/app/ted/ted.tcl ...
+    wize ~/bin/wizapp.zip:ted/ted.tcl ...
+    @]
+
+
+    !! How can I find a window.
+
+    Use [[FindWindow|Tk::find]].
+
+
+    !! How can I setup a background image tile?
+
+    Use the '''-tile''' option.  (See [[Widgets#tile|Widget Tile]]).
+
+
+    !! How do I get an input string?
+
+    See [[Inputs]].
+
+    !! What extensions are supported?
+
+    * [[Snack]]: a sound extension.
+    * [[Canvas3d]]: an OGL extension.
+
+
+    !! Where are the built-in utilities (eg. *catch, *value, etc) defined?
+
+    '''/zvfs/modlite/util.tcl'''
+
+    !! Where are the images mounted?
+
+    '''/zvfs/img'''
+
+
+

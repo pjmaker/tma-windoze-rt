@@ -1,0 +1,142 @@
+#!/usr/bin/env wize
+
+
+script {
+    
+    variable _
+    set _(path) {/usr/bin /bin /sbin /usr/sbin }
+    
+    proc TreeInit {t} {
+        foreach i [TreeView column names $t] {
+            styles item $t column $i
+        }
+    }
+    
+    proc FillCPU {_} {
+        upvar $_ {}
+        set t $(w,cpu)
+        TreeView column conf $t 0 -title Name
+        TreeView column insert $t end Value -justify left -titlejustify left
+        set d [split [*fread /proc/cpuinfo] \n]
+        set pid 0
+        foreach i $d {
+            if {[set col [string first : $i]]<0} continue
+            set tnam [string trim [string range $i 0 [expr {$col-1}]]]
+            set tval [string trim [string range $i [expr {$col+1}] end]]
+            if {$tnam == "processor"} {
+                set pid $tval
+                TreeView insert $t end $pid -label "cpu $pid"
+                continue
+            }
+            TreeView insert $t end [list $pid $tnam] -data [list Value $tval]
+        }
+        TreeInit $t
+        TreeView open $t all
+    }
+    
+    proc FillMem {_} {
+        upvar $_ {}
+        set t $(w,mem)
+        TreeView column conf $t 0 -title Name
+        TreeView column insert $t end Value -justify left -titlejustify left
+        set d [split [*fread /proc/meminfo] \n]
+        foreach i $d {
+            if {[set col [string first : $i]]<0} continue
+            set tnam [string trim [string range $i 0 [expr {$col-1}]]]
+            set tval [string trim [string range $i [expr {$col+1}] end]]
+            TreeView insert $t end [list $tnam] -data [list Value $tval]
+        }
+        TreeInit $t
+    }
+
+    proc GetPath {_ cmd} {
+        upvar $_ {}
+        foreach i $(path) {
+            if {[file exists $i/$cmd]} { return $i/$cmd }
+        }
+    }
+        
+    proc FillPCI {_} {
+        upvar $_ {}
+        set t $(w,pci)
+        TreeView column conf $t 0 -title Name
+        if {[set cmd [GetPath $_ lspci]] == {}} return
+        set d [split [exec $cmd] \n]
+        foreach i $d {
+            TreeView insert $t end #auto -label $i
+        }
+        TreeInit $t
+    }
+    
+    proc FillUSB {_} {
+        upvar $_ {}
+        set t $(w,usb)
+        TreeView column conf $t 0 -title Name
+        if {[set cmd [GetPath $_ lsusb]] == {}} return
+        set d [split [exec $cmd] \n]
+        foreach i $d {
+            TreeView insert $t end #auto -label $i
+        }
+        TreeInit $t
+    }
+    
+    proc FillKMOD {_} {
+        upvar $_ {}
+        set t $(w,kmod)
+        TreeView column conf $t 0 -title Name
+        
+        if {[set cmd [GetPath $_ lsmod]] == {}} return
+        set d [split [exec $cmd] \n]
+        foreach i $d {
+            TreeView insert $t end #auto -label $i
+        }
+        TreeInit $t
+    }
+    
+    proc Main {_} {
+        upvar $_ {}
+        FillCPU $_
+        FillMem $_
+        FillPCI $_
+        FillKMOD $_
+    }
+}
+
+style {
+    Tabset { -slant both }
+    Toplevel {
+        @defimages {
+            val greenball
+        }
+    }
+    TreeView {
+        @eval {
+            TreeView style create textbox %W alt -bg LightBlue
+        }
+        -bg white -leaficons ^val  -altstyle alt -underline 1
+    }
+    TreeView::column {
+        -bd 1 -relief raised
+    }
+}
+
+{Toplevel + -geom 500x400 -title "System Info"} {
+    
+    {Tabset + -pos *} {
+        {tab + -label CPU -pos *} {
+            {TreeView - -id cpu -pos *} {}
+        }
+        {tab + -label Memory -pos *} {
+            {TreeView - -id mem -pos *} {}
+        }
+        {tab + -label PCI -pos *} {
+            {TreeView - -id pci -pos *} {}
+        }
+        {tab + -label USB -pos *} {
+            {TreeView - -id usb -pos *} {}
+        }
+        {tab + -label KMOD -pos *} {
+            {TreeView - -id kmod -pos *} {}
+        }
+    }
+}

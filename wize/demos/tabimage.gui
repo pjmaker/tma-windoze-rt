@@ -1,0 +1,55 @@
+#!/usr/bin/env wize
+
+script {
+    proc DoStart {_} { tclLog "DoStart" }
+    proc DoEnd {_} { tclLog "DoEnd" }
+    proc Closer {_ w tab} {
+        # Handle tab deletion.
+        set win [$w tab cget $tab -window]
+        destroy $win
+        $w delete $tab
+    }
+}
+
+style {
+    Tabset.ts1 { @@ {
+        -pos * -slant none -closebut {-msg Closer -prompt 1}
+        -startimgs {editadd editremove} -endimgs editremove
+        -startmsg DoStart -endmsg DoEnd -tiers 2  -accelids txt1
+    }}
+
+    Tabset.ts2 { @@ {
+        -pos * -slant right
+    } }
+
+
+    Tabset::tab { -underline 0 }
+
+    Text { -height 10 @@ {
+        -pos * } @eval { %W insert end "%I"
+    }}
+}
+
+{Tabset + -id ts1} { 
+    {tab + -label Able} {    {Text - -id txt1} {} }
+    {tab + -label Baker} {   Text {} }
+    {tab + -label Charlie} { Text {} }
+    {tab + -label Delta} {   Text {} }
+    {tab + -label Echo} {    Text {} }
+    {tab + -label Foxtrot} { Text {} }
+    {tab + -label Romeo} {   Text {} }
+    {tab + -label Tango} {   Text {} }
+    {tab + -label Zulu} {    Text {} }
+}
+
+{Tabset + -id ts2} { 
+    {tab + -closebut 1 -label Able} {    Text {} }
+    {tab + -closebut 1 -label Baker} {   Text {} }
+    {tab + -closebut 1 -label Charlie} { Text {} }
+    {tab + -label Delta} {   Text {} }
+    {tab + -label Echo} {    Text {} }
+    {tab + -label Foxtrot} { Text {} }
+    {tab + -label Romeo} {   Text {} }
+    {tab + -label Tango} {   Text {} }
+    {tab + -label Zulu} {    Text {} }
+}

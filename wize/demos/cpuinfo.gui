@@ -1,0 +1,133 @@
+#!/usr/bin/env wize
+
+script {
+    # Mockup of CPU-Z to test "inputs"
+    
+    array set _ {
+        proc,Name "Intel Pentium 4"
+    }
+    variable Data_proc {
+        { Name        "Intel Pentium 4" }
+        { Code_Name   "Northwood" }
+        { Brand_Id    "14" }
+        { Package     "Socket 748 mPGA" }
+        { Technology  "0.13um" }
+        { Specification "Mobile Intel" }
+        { Family      "F" }
+        { Ext_Family  "F" }
+        { Instructions "MMX,SSE,SSE2" }
+    }
+    
+    variable Data_clocks {
+        { Core_Speed    "1695.1 MHz" }
+        { Multiplier    "x 17.0" }
+        { Bus_Speed     "99.7 MHz" }
+        { Rated_FSB     "398.8 MHz" }
+        
+    }
+    
+    variable Data_cache {
+        { L1_Data       "8 KBytes" }
+        { L1_Trace      "12 Kuops" }
+        { Level_2       "512 KBytes" }
+        { Level_3 }
+    }
+
+    proc Doproc {_ id} {
+        upvar $_ {}
+        upvar [namespace current]::Data_$id dd
+        foreach i $dd {
+            foreach {nam val} $i break
+            set ($id,$nam) $val
+        }
+        return $dd
+    }
+    
+    proc Ok {_} {
+        Delete $_
+    }
+    
+    proc Main {_ args} {
+        Wiz::debug
+    }
+}
+{style} {
+    Toplevel {
+        @defgradients {
+            grad1 {lightblue white -rotate 45 -tile 1 -width 20 -height 20 -gamma 2}
+            grad1a {lightblue white -rotate 45 -tile 1 -width 20 -height 20 -gamma 6}
+        }
+        *tile ^grad1
+        *Entry.tile ^grad1a
+    }
+    Tabset {
+        *Entry.borderWidth 1
+        *Entry.width 10
+        *Entry.highlightThickness 0
+        *Entry.state disabled
+        *Entry.disabledForeground Black
+        *Entry.disabledBackground AliceBlue
+        *font {Helvetica -12}
+    }
+    #Label { -relief raised }
+    Labelframe { @pack { -padx 2  -pady 2} }
+    .bfram { -padx 3 -pady 2 }
+    @ient { -width 3 }
+    #Labelframe@foo { -bd 5 }
+    
+}
+
+
+{Toplevel + -title "CPU Info"} {
+    
+    {Frame + -pos *} {
+        {Tabset + -id myts -pos *} {
+            {tab + -label CPU -pos *} {
+                {Labelframe + -label Processor -pos *} {
+                    {inputs - -id proc -prefix proc, -useeval {%_ Doproc %I} -pos *} {}
+                }
+                {Frame + -id foo -subpos l* -pos *} {
+                    {Labelframe + -label {Clocks(Core#0)}} {
+                        {inputs - -id clocks -prefix clocks, -useeval {%_ Doproc %I} -pos *} {}
+                    }
+                    {Labelframe + -label Cache} {
+                        {inputs - -id cache -prefix cache, -useeval {%_ Doproc %I} -pos *} {}
+                    }
+                    {#Label - -pos @50,100} FOOOOOOOOO
+                }
+
+                {Labelframe + -subpos l -pos *} {
+                    {grid + -pos _} {
+                        {row + -pos *} {
+                            {Frame + -subpos l} {
+                                {Label} Selection
+                                {Menubutton -} {{Processor #1}}
+                            }
+                            {Frame + -subpos l} {
+                                {Label} Cores
+                                {Entry - -gid ient} 1
+                            }
+                            {Frame + -subpos l} {
+                                Label Threads
+                                {Entry - -gid ient} 1
+                            }
+                        }
+                    }
+                }
+            }
+            {tab + -label Cache} {
+            }
+            {tab + -label Mainboard} {
+            }
+            {tab + -label Memory} {
+            }
+            {tab + -label About} {
+            }
+        }
+        {Frame + -id bfram -pos _} {
+            {Label - -shadow black -conf { -fg gray -font {Verdana -22 bold}} -pos lw} CPU-I
+            {Button - -pos re} Ok
+        }
+        
+    }
+}

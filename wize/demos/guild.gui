@@ -1,0 +1,2267 @@
+#!/usr/bin/env wize
+
+{options - -blt 1} {}
+{#options - -blt 1} {}
+
+script {
+    # GUILD (GUI Layout Designer) is a GUI builder for Mod/Wize.
+    #
+    # $Id: guild.gui,v 1.15 2010/05/17 00:14:01 pcmacdon Exp $
+    variable _
+    variable ItemParent
+    declare pc Array
+    set pc(copyright) "Guild: A GUI Builder\nVersion 1.0\nBSD Copyright 2010\nPeter MacDonald"
+    set pc(menutypes) {x r c menu}
+    
+    array set _ {
+        tt {}    navlast {}    title {}   curind {}    file {}
+        t:gtree {}   guicopy {}   curins {}   chg 0    curtype {}
+        curelem {}   style:curind {}   style:ipos {}  style:chg 0
+        style:cid {}   warnings {}
+        lasttag {}
+        
+        v,child 0    v,men_addproc 0
+        v,grd_rows 1   v,grd_cols 2    v,grd_celltype Frame
+        v,grd_rowattr "-pos *"
+        v,frm_childs 0   v,frm_toleft 0    v,frm_celltype Frame
+        v,pan_num 2   v,pan_vertical 0 v,tab_labels {}
+        v,tre_titles {}    v,tre_hidetree 0
+    }
+    
+    set pc(isinit) 0
+    set pc(elnames) {}
+    set pc(default:code) {
+        #!/usr/bin/env wize
+        script {
+            array set _ { noexit 0 }
+            
+            proc Main {_} {
+                # Startup handler.
+                upvar $_ {}
+            }
+            
+            proc Cleanup {_} {
+                # Exit handler.
+                upvar $_ {}
+                if {$(noexit)} { return -code break }
+            }
+        }
+        style {
+            Toplevel {
+            }
+            .mainf {
+            }
+        }
+        {Toplevel + -title "Unamed App" -geom 400x300 -id main} {
+            
+            statusbar   {}
+            {Frame + -id mainf -pos *} {
+                {Text + -id txt -pos * -scroll *} {}
+            }
+        }
+    }
+    set pc(ftypes) {
+        { "GUI Files" .gui}
+        { "All Files" * }
+    }
+    set pc(fxtypes) {
+        { "GUI XML Files" .xml}
+        { "GUI Files" .gui}
+        { "All Files" * }
+    }
+    set pc(mainattr) { -pos -subpos -id -subattr -key -tip -scroll }
+    
+    # Buttons for sidebar.
+    set pc(widimgs) {
+        {Toplevel gui-window} {Frame gui-frame} {Labelframe gui-labelframe}
+        {Panedwindow gui-vpaned} {grid gui-table} {Tabset gui-tabset}
+        {mapwin gui-mapwin} {Canvas canvas} {Button gui-button}
+        {Menubutton gui-optionmenu} {Checkbutton gui-checkbutton}
+        {Radiobutton gui-radiobutton} {Label gui-label} {Message gui-message}
+        {Entry gui-entry} {Spinbox gui-spinbutton} {Text gui-text}
+        {Listbox gui-list} {TreeView gui-ctree} {Table gui-clist}
+        {Scale gui-progressbar} {Scrollbar gui-vscrollbar}
+    }
+
+    set pc(ttkimgs) {
+        {TFrame gui-frame} {TLabelframe gui-labelframe}
+        {TPanedwindow gui-vpaned} {TNotebook gui-tabset}
+        {TButton gui-button}
+        {TMenubutton gui-optionmenu} {TCheckbutton gui-checkbutton}
+        {TRadiobutton gui-radiobutton} {TLabel gui-label}
+        {Combobox gui-entry}
+        {Treeview gui-ctree}
+        {TProgress gui-progressbar} {TScrollbar gui-vscrollbar}
+        {TSeparator gui-hseparator}
+        {TSizegrip frame_edit}
+
+    }
+
+    set pc(itemimgs) {
+        {tab gui-tabsetitem "Tabset tab item" }
+        {pane gui-vpaneditem "pane item for Panedwindow" }
+        {row gui-tablerow "row item for Grid" }
+        {menu gui-menubar "cascade item for Menu" menuitem} 
+        {c gui-checkmenuitem "check item for Menu"}
+        {r gui-radiomenuitem "radio item for Menu"}
+        {x gui-menuitem "command item for Menu"}
+        {sep gui-hseparator "Menu separator item"}
+    }
+    
+    set pc(miscimgs) {
+        {Menu gui-menubar} {comment star}
+        {buttonbox buttonbox} {statusbar gui-statusbar}
+        {hsep gui-hseparator} {vsep gui-vseparator}
+        {script exec} {eval gui-source}
+        {include gui-save "Include a gui file inline"} {style style}
+    }
+    
+    set pc(manual) {!!GUILD Primer
+    
+''Guild'' is a user interface for creating '''GUI'''s for ''wize''.
+A wize GUI is a tree of elements that's packed from top to bottom.
+GUI elements frequently define two common attributes.
+An ''"-id"'' (identifier) is defined
+for later use with styles and/or code.
+And window elements typically specify a ''"-pos"'' option to control
+positioning/filling
+(eg ''"-pos *"'' or ''"-pos _l"'').  Also, a ''"-subpos"'' can be used
+to define a default ''-pos'' for each element in a subtree.
+
+To insert a new element, select an insert position and then click on
+the desired element from the left toolbars.  To insert as a child, make
+sure '''Child''' is checked first.  Elements may also be
+''Cut'', ''Copied'' and ''Pasted''.
+
+After a ''GUI'' is layed out, click ''Save'', then ''Run''.
+This will display the current gui.
+You can then use ''<Control-Alt-Shift-space>'' to open a console
+or ''<Control-Alt-Shift-2>'' on a widget
+to display its Tk options.  Widget changes should be manually transcribed
+as style options.  Alternatively, use menu ''Edit/Introspect'' to access
+the '''Sandbox'''.
+
+For example, suppose you have an element ''"{Text - -id foo} {}"''.
+You could configure a style element option value:
+
+[@
+  .foo { -bg Red -relief raised }
+@]
+  
+See ''http://pdqi.com'' for more details on '''GUI''' and '''styles'''.
+
+Note:  the currently selected widget is used when opening '''Introspect'''.
+    }
+    ##### START OF CODE #####
+    
+    proc Init {} {
+        # Construct list of items to parent.
+        variable ItemParent
+        variable pc
+        set pc(isinit) 1
+        upvar ::Tk::gui::element_info Ei
+        foreach i [array names Ei] {
+            lappend pc(elnames) $i
+            array unset q
+            array set q $Ei()
+            array set q $Ei($i)
+            foreach j $q(-items) {
+                set ItemParent($j) $i
+            }
+        }
+        set pc(elnames) [lsort $pc(elnames)]
+        #*catch { set pc(hatchimg) [image create photo -data $pc(hatchxpm) -gamma 2] }
+    }
+    
+    proc Notify {_ str args} {
+        # Print notify message.
+        upvar $_ {}
+        return [eval [list tk_messageBox -message $str -parent $(w,.)] $args]
+    }
+    
+    proc About {_} {
+        # Copyright.
+        variable pc
+        Notify $_ [mc $pc(copyright)]
+    }
+    
+    proc Primer {_} {
+        # Show help.
+        variable pc
+        upvar $_ {}
+        set tt [lib docview show -data $pc(manual) -title "[mc {Guild Primer}]"]
+        Text conf $tt -wrap word
+    }
+    
+    proc Child {_} {
+        # Insert as child of current node.
+    }
+    
+    proc FillLevel {_ guidata {node 0} {pos end}} {
+        # Load gui data xtree into tree at node.
+        upvar $_ {}
+        set t $(w,gtree)
+        set n -1
+        set id {}
+        foreach {mup val} $guidata {
+            incr n
+            #if {$node == 0 && $n == 0 && [string match #!* $mup]} continue
+            set tag [lindex $mup 0]
+            set istree [expr {[lindex $mup 1] == "+"}]
+            set aa [lrange $mup 2 end]
+            set data [list Attributes $aa Tag $tag]
+            array unset qq
+            catch { array set qq $aa }
+            if {[info exists qq(-id)]} {
+                lappend data Id $qq(-id)
+            }
+            if {!$istree} {
+                lappend data Value $val
+                switch -- $tag {
+                    script -
+                    style -
+                    default {
+                    }
+                }
+            }
+            if {[string match #* [set stag $tag]]} {
+                set stag comment
+            }
+            set img [images lookup $(w,.) $stag]
+            set id [TreeView insert $t $pos [list $tag] -at $node -data $data -icons $img]
+            if {$istree } {
+                FillLevel $_ $val $id
+            }
+        }
+        return $id
+    }
+    
+    proc StyleConfig {_ {ind focus}} {
+        upvar $_ {}
+        set t $(w,tstyle)
+        set ind [TreeView index $t $ind]
+        if {$ind == {}} {
+            Notify $_ "Please create a pattern first with 'New'"
+            return
+        }
+        Tk::gui toplevel $_ -id tl_style_conf
+    }
+    
+    proc StyleDel {_ {ind focus}} {
+        upvar $_ {}
+        set t $(w,tstyle)
+        set ind [TreeView index $t $ind]
+        if {$ind == {}} return
+        set lbl [TreeView get $t $ind]
+        if {[Notify $_ "[mc {Ok to delete style}] '$lbl'" -type okcancel] != "ok"} {
+            return
+        }
+        TreeView delete $t $ind
+    }
+    
+    proc Match_Next {_} {
+    }
+    
+    namespace eval StyleAdd {
+        
+        Mod upvars _
+        
+        proc Ok {_} {
+            upvar $_ {}
+            set t $(w,tstyle)
+            set id [string trim $(v,sty_name)]
+            set class [string trim $(v,sty_class)]
+            set ipos $(style:ipos)
+            if {$id == {} && $class == {}} {
+                tk_messageBox -message [mc {Can not add empty style pattern}] -parent $(w,style_add)
+                return
+            }
+            if {$(v,sty_initattr) != "-" && ([llength $(v,sty_initattr)]%2)} {
+                tk_messageBox -message [mc {conf length must be even}] -parent $(w,tl_style_add)
+                return
+            }
+            incr (style:chg)
+            if {$class == {}} {
+                set val .$id
+            } elseif {$id == {}} {
+                set val $class
+            } else {
+                set val $class.$id
+            }
+            set id [TreeView insert $t $ipos $val -forcetree 1 -isopen 1]
+            update idletasks
+            TreeView entry select $t $id
+            foreach {i j} $(v,sty_initattr) {
+                TreeView insert $t end $i -at $id -data [list Value $j]
+            }
+            Tk::gui::dialogclose $_
+        }
+        
+        proc Cancel {_} {
+            Tk::gui::dialogclose $_
+        }
+        
+        proc Main {_} {
+            # Add style pattern initializer
+            upvar $_ {}
+            upvar ::Tk::gui::element_info Ei
+            set g $(w,gtree)
+            set t $(w,tstyle)
+            set ids [TreeView find $g -column Id -return Id]
+            set lst [concat {{}} [lsort -unique $ids]]
+            Spinbox conf $(w,sty_name) -values $lst
+            
+            set lst [lsort [array names Ei {[A-Z]*}]]
+            set lst [concat {{}} $lst]
+            Spinbox conf $(w,sty_class) -values $lst
+
+            # Figure out insert position.
+            set ichlds [TreeView entry children $t root]
+            if {$ichlds == {} || [set ipos [TreeView index $t focus]]=={}} {
+                set ipos end
+            } else {
+                while {[TreeView entry depth $t $ipos]>1} {
+                    set ipos [TreeView entry parent $t $ipos]
+                }
+                set ipos [lsearch $ichlds $ipos]
+                if {$ipos < 0} { set ipos end }
+            }
+            set (style:ipos) $ipos
+        }
+    }
+    
+    namespace eval Styles {
+        
+        Mod upvars _
+        
+        proc Move-After {_} {
+            # Move element down after next sibling.
+            upvar $_ {}
+            set t $(w,tstyle)
+            incr (style:chg)
+            catch { TreeView move $t focus after nextsibling }
+            update
+            TreeView entry select $t focus
+        }
+        
+        proc Move-Before {_} {
+            # Move element up before previous sibling.
+            upvar $_ {}
+            set t $(w,tstyle)
+            incr (style:chg)
+            catch { TreeView move $t focus before prevsibling }
+            update
+            TreeView entry select $t focus
+        }
+    }
+    
+    namespace eval StyleConf {
+        
+        Mod upvars _
+        
+        proc Ok {_} {
+            upvar $_ {}
+            set t $(w,tstyle)
+            set tab [Tabset get $(w,stc_tab) focus]
+            switch -- $tab {
+                Config {
+                    set nam $(v,stc_config)
+                    set val $(v,stc_cvalue)
+                }
+                Macro {
+                    set nam $(v,stc_macro)
+                    set val $(v,stc_mvalue)
+                }
+                {DB Option} {
+                    set nam $(v,stc_dboptoin)
+                    set val $(v,stc_dvalue)
+                }
+                default {
+                    set nam -
+                    set val {}
+                }
+            }
+            set id [TreeView insert $t end [list $nam] -at $(style:cid) -data [list Value $val]]
+            update idletasks
+            TreeView entry select $t $id
+            Tk::gui::dialogclose $_
+        }
+        
+        proc Cancel {_} {
+            Tk::gui::dialogclose $_
+        }
+        
+        proc Main {_} {
+            # Add style config initializer
+            upvar $_ {}
+            upvar ::Tk::Wopts Wopts
+            upvar ::Tk::Wvals Wvals
+            set g $(w,gtree)
+            set t $(w,tstyle)
+            
+            set (v,stc_cvalue) ""
+            set (v,stc_mvalue) ""
+            set (v,stc_dvalue) ""
+            if {[Spinbox cget $(w,stc_macro) -values] == {}} {
+                set lst {{}}
+                foreach i [lsort [info commands ::Tk::styles::StyleCmds::@\[a-z\]*]] {
+                    lappend lst [namespace tail $i]
+                }
+                foreach i [lsort [info commands ::Tk::styles::StyleCmds::@@*]] {
+                    lappend lst [namespace tail $i]
+                }
+                Spinbox conf $(w,stc_macro) -values $lst
+            }
+            set cid [TreeView index $t focus]
+            if {$cid == {}} return
+            while {[TreeView entry depth $t $cid]>1} {
+                set cid [TreeView entry parent $t $cid]
+            }
+            set (style:cid) $cid
+            set pat [TreeView get $t $cid]
+            set cpat $pat
+            if {[string match .* $cpat]} {
+                set cpat [string range $cpat 1 end]
+                set ccid [TreeView find $g -column Id -name $cpat -return {}]
+                if {$ccid != {}} {
+                    set cpat $ccid
+                }
+            }
+            if {[info exists Wopts($cpat)]} {
+                set lst $Wopts($cpat)
+            } elseif {[info exists Wopts(${cpat}::configure)]} {
+                set lst $Wopts(${cpat}::configure)
+            } else {
+                set lst {}
+            }
+            if {$lst != {}} {
+                set lst [concat {{}} $lst]
+            }
+            Spinbox conf $(w,stc_config) -values $lst
+
+            if {[info exists Wvals($pat)]} {
+                set lst $Wvals($pat)
+            } elseif {[info exists Wvals(${pat}::configure)]} {
+                set lst $Wvals(${pat}::configure)
+            } else {
+                set lst {}
+            }
+            if {$lst != {}} {
+                set llst {{}}
+                foreach i $lst {
+                    if {[llength $i]<=2} continue
+                    lappend llst *[lindex $i 1]
+                }
+                set lst $llst
+            }
+            Spinbox conf $(w,stc_dboption) -values $lst
+        }
+    }
+    
+    proc StyleSave {_} {
+        upvar $_ {}
+        set t $(w,tstyle)
+        set w $(w,gtree)
+        if {!$(style:chg)} return
+        set (style:chg) 0
+        set lst {}
+        foreach i [TreeView entry children $w root] {
+            set slst {}
+            set pat [TreeView get $w $i]
+            foreach j [TreeView entry children $w $i] {
+                set sn [TreeView get $w $j]
+                set sv [TreeView entry get $w $j Value]
+                if {$slst != {}} { append slst \n }
+                append slst [list $sn $sv]
+            }
+            if {$lst != {}} { append lst \n }
+            append lst [list $pat $slst]
+        }
+        TreeView entry set $w $(style:curind) $lst
+        set (style:chg) 0
+    }
+    
+    proc StyleFill {_ ind} {
+        # Fill available attrs widget from GUI info.
+        upvar $_ {}
+        set t $(w,tstyle)
+        set w $(w,gtree)
+        
+        if {$ind == $(style:curind)} return
+        set (style:curind) $ind
+        set data [TreeView entry set $w $ind Value]
+        TreeView delete $t all
+
+        foreach {pat conf} $data {
+            set id [TreeView insert $t end $pat]
+            foreach {j k} $conf {
+                set nid [TreeView insert $t end $j -at $id -data [list Value $k]]
+            }
+        }
+        if {[llength $data]} {
+            TreeView open $t -trees root
+            update
+            catch { TreeView entry select $t top }
+        }
+    }
+    
+    proc Fill1Attr {_ id lst} {
+        # Fill one attr.
+        upvar $_ {}
+        upvar 1 q q
+        set a $(w,allattr)
+        TreeView open $a $id
+        foreach i [lsort $lst] {
+            lassign $i nam val desc
+            set ll [llength $i]
+            array set r { -type {} }
+            if {$ll>3 && ($ll%2)} {
+                array set r [lrange $i 3 end]
+            }
+            set q($nam) $desc
+            set data [list Default $val Description [mc $desc] Type $r(-type)]
+            TreeView insert $a end $nam -at $id -data $data
+        }
+    }
+
+    proc FillAttrs {_ ind} {
+        # Fill available attrs widget from GUI info.
+        upvar $_ {}
+        upvar ::Tk::gui::pc gpc
+        upvar ::Tk::gui::element_options eo
+        upvar ::Tk::gui::element_info Ei
+        set t $(w,gtree)
+        set a $(w,attrs)
+        set aa $(w,allattr)
+        set v $(w,curval)
+        
+        set ind [TreeView index $t $ind]
+        if {$ind == $(curind)} return
+        set (curind) $ind
+        if {$ind == {}} return
+        TreeView delete $a all
+        TreeView delete $aa all
+        set tag [TreeView get $t $ind]
+        if {[string match #* $tag]} {
+            set tag #
+        }
+        if {$tag == {}} { return }
+        array set ei $Ei()
+        if {[info exists Ei($tag)]} {
+            array set ei $Ei($tag)
+        }
+        set estat  [expr {(($ei(-term)||($ei(-tree)==2)) && !$ei(-noval))?"normal":"disabled"}]
+        Button conf $(w,butcv) -state $estat
+        set attrs [TreeView entry set $t $ind Attributes]
+        set curval [TreeView entry set $t $ind Value]
+        set (v,curval) $curval; #$cv
+        
+        if {$tag == "style"} {
+            Tk::gui win map $_ amaps wstyle
+            StyleFill $_ $ind
+            set (lasttag) style
+            return
+        }
+        if {$(lasttag) == "style"} {
+            StyleSave $_
+        }
+        set (lasttag) $tag
+        
+        Tk::gui win map $_ amaps wattrs
+        
+        # Load attributes
+        set fg Blue
+        foreach {nam val} $attrs {
+            set desc [*value q($nam)]
+            set data [list Value $val]
+            catch { TreeView insert $a end $nam -data $data }
+        }
+        #set data [list Description [mc "Current attributes"]]
+        #set cid [TreeView insert $a end Current -data $data -forcetree 1 -label [mc Current] -fg $fg]
+        #TreeView open $a $cid
+        set opts $gpc(all_options)
+        set eotag $tag
+        set ptag [TreeView get $t [TreeView entry parent $t $ind]]::$tag
+        if {!([info exists eo($tag)] && [llength $eo($tag)]) &&
+           [info exists eo($ptag)] && [llength $eo($ptag)]} {
+            set eotag $ptag
+        }
+        if {[info exists eo($eotag)] && [llength $eo($eotag)]} {
+            set data [list Description [mc "Attributes specific to the element type"]]
+            set id [TreeView insert $aa end Custom -data $data -forcetree 1 -label [mc Custom] -fg $fg]
+            Fill1Attr $_ $id $eo($eotag)
+        }
+        set data [list Description [mc "General attributes"]]
+        if {!$ei(-noattr)} {
+            set id [TreeView insert $aa end General -data $data -forcetree 1 -label [mc General] -fg $fg]
+            Fill1Attr $_ $id $gpc(all_options)
+        }
+        if {$ei(-iswin)} {
+            #set opts [concat $opts $gpc(win_options)]
+            set data [list Description [mc "Window specific attributes"]]
+            set id [TreeView insert $aa end Window -data $data -forcetree 1 -label [mc Window] -fg $fg]
+            Fill1Attr $_ $id $gpc(win_options)
+            set w0 [lindex [TreeView entry children $aa 0] 0]
+            TreeView move $aa [TreeView find $aa -name -id] before $w0
+            TreeView move $aa [TreeView find $aa -name -pos] before $w0
+        }
+        catch { TreeView entry select $aa top }
+        if {[llength $attrs]} {
+            update
+            catch { TreeView entry select $a top }
+            event generate $a <<TreeViewFocusEvent>>
+        }
+    }
+    
+    proc DoCancel {_ str} {
+        if {$str == {}} { return 0 }
+        set rv [Notify $_ $str -icon warning -type okcancel -default cancel]
+        if {$rv == "cancel"} { return 1 }
+        return 0
+    }
+    
+    proc NewElement {_ id} {
+        # Insert a new element.
+        variable ItemParent
+        upvar $_ {}
+        upvar ::Tk::gui::pc gpc
+        upvar ::Tk::gui::element_options eo
+        upvar ::Tk::gui::element_info Ei
+        upvar ::Tk::gui::item_subwins isw
+        set t $(w,gtree)
+        set ttt [set tt [string range $id 3 end]]
+        if {[string match *Sub $tt]} {
+            set tt [string range $tt 0 end-3]
+        }
+        set (curelem) $tt
+        set ic [images lookup $(w,.) $tt]
+        set ind [TreeView index $t focus]
+        set isroot 0
+        if {$ind == {}} {
+            if {[TreeView entry children $t 0] != {}} {
+                return
+            }
+            set isroot 1
+            set ind 0
+            set pind -1
+            set plbl ""
+        } else {
+            if {$(v,child)} {
+                set pind 0
+                set plbl [TreeView get $t focus]
+            } else {
+                set pind [TreeView entry parent $t $ind]
+                set plbl [TreeView get $t $pind]
+            }
+        }
+        if {$tt == "comment"} { set tt # }
+        array set EI $Ei()
+        if {[info exists Ei($plbl)]} {
+            array set EI $Ei($plbl)
+        }
+        #tclLog "LBL($(v,child)): $plbl"
+        set ptag [lindex $plbl 0]
+        set rmsg {}
+        if {$(v,child)} {
+            if {[string match #* $ptag] || ([info exists Ei($plbl)] && $EI(-term))} {
+                set rmsg "[mc {Can not add children to element}]: '$plbl'"
+            }
+        }
+        if {$rmsg != {} && [Notify $_ $rmsg -icon warning -type okcancel] != "ok"} return
+        
+        set rmsg {}
+        if {$tt != "#" && $EI(-items) != {} && [lsearch $EI(-items) $tt]<0} {
+            set rmsg "'$tt' [mc {insert not one of}]: '$EI(-items)'"
+        }
+        if {[DoCancel $_ $rmsg]} return
+        if {$isroot} {
+            set iind $ind
+            set ipos end
+        } elseif {$(v,child)} {
+            set iind $ind
+            set ipos 0
+        } else {
+            set iind $pind
+            set ipos [lsearch [TreeView entry children $t $pind] $ind]
+        }
+        set path [TreeView get $t -full $iind]
+        set (curins) [list $iind $ipos]
+        set baditem 0
+        if {[set stt $tt] == "menu"} {
+            set stt Menu
+        }
+        set rmsg {}
+        if {$tt == "#"} {
+        } elseif {$tt == "menu"} {
+            if {$plbl != "Menu" && $plbl != "menu"} {
+                set rmsg "'$tt' [mc {must be in a menu}]"
+            }
+        } elseif {[info exists ItemParent($stt)] && $ItemParent($stt) != $plbl} {
+            set rmsg "'$tt' [mc {must be a child of}] '$ItemParent($tt)'"
+        } elseif {[info exists ItemParent($plbl)] && [lsearch $isw $plbl]<0} {
+            set rmsg "'$tt' [mc {item can not have children}]"
+        }
+        if {[DoCancel $_ $rmsg]} return
+        set rmsg {}
+        switch -- $tt {
+            comment - style - script - source - eval - include - options -
+            subst - wm {}
+            Menu {}
+            s - x - r - c - menu - sep - separator - checkbutton - radiobutton - command - var {}
+            Toplevel {
+                if {[string first Toplevel $path]>=0} {
+                    set rmsg "[mc {Should not insert into Toplevel}]"
+                }
+            }
+            default {
+                if {[string first Toplevel $path]<0} {
+                    set rmsg "[mc {Should insert into Toplevel}]"
+                }
+            }
+        }
+        if {[DoCancel $_ $rmsg]} return
+        incr (chg)
+        set data {}
+        switch -- $tt {
+            grid {
+                Tk::gui toplevel $_ -id grid_new
+                return
+            }
+            Frame {
+                Tk::gui toplevel $_ -id frame_new
+                return
+            }
+            Tabset {
+                Tk::gui toplevel $_ -id tab_new
+                return
+            }
+            Panedwindow {
+                Tk::gui toplevel $_ -id paned_new
+                return
+            }
+            TreeView {
+                Tk::gui toplevel $_ -id tv_new
+                return
+            }
+            buttonbox {
+                Tk::gui toplevel $_ -id bbx_new
+                return
+            }
+            menu - Menu {
+                Tk::gui toplevel $_ -id men_new
+                return
+            }
+            OLmenu {
+                set val {}
+                set rc [Tk::getInput -var val -text [mc Label] -title [mc "Menu label"] -opts {-width 30}]
+                if {!$rc} return
+                lappend data Attributes [list -label $val]
+            }
+            x - r - c - Button - Radiobutton - Checkbutton {
+                Tk::gui toplevel $_ -id but_new
+                return
+            }
+            Label - Message {
+                set val {}
+                set rc [Tk::getInput -var val -text [mc Value] -title [mc "Element Value"] -opts {-width 30} -parent $(w,.)]
+                if {!$rc} return
+                lappend data Value $val
+            }
+            Toplevel {
+                if {$pind != "0"} {
+                    #Notify $_ [mc "Toplevel should be at root" -icon warning]
+                }
+            }
+        }
+        set nid [TreeView insert $t $ipos [list $tt] -at $iind -icons [list $ic $ic] -data $data]
+        TreeView open $t $nid
+        TreeView entry select $t $nid
+    }
+    
+    proc NavSet {_ id} {
+        # Set the current navigation window buttons relief to sunken.
+        upvar $_ {}
+        if {$(navlast) != {}} {
+            Button conf $(w,$(navlast)) -relief raised
+        }
+        Button conf $(w,$id) -relief sunken
+        set (navlast) $id
+    }
+
+    proc ClearTrees {_} {
+        # Clear all gui info before loading.
+        upvar $_ {}
+        TreeView delete $(w,gtree) all
+        TreeView delete $(w,attrs) all
+        TreeView delete $(w,allattr) all
+    }
+    
+    proc OpenTrees {_} {
+        # Open all trees, then close Menu and Toplevel.
+        upvar $_ {}
+        set t $(w,gtree)
+        TreeView open $t -trees root
+        foreach i {Menu Toplevel} {
+            TreeView close $t [TreeView find $t -name $i -uselabel]
+        }
+        catch { TreeView entry select $t focus }
+    }
+    
+    proc FillTree {_ file} {
+        upvar $_ {}
+        set t $(w,gtree)
+        set d [*fread $file]
+        FillLevel $_ $d
+        FillAttrs $_ top
+    }
+    
+    proc MkButBar {_ id} {
+        # Make a buttons.
+        variable pc
+        set lst {}
+        set vals {}
+        foreach i $pc($id) {
+            set in [lindex $i 0]
+            set im [lindex $i 1]
+            if {[set tin [lindex $i 2]] == {}} {
+                set tin $in
+            }
+            if {[set lin [lindex $i 3]] == {}} {
+                set lin [string tolower $in]
+            }
+            set iin $in
+            switch -- $in {
+                Menu {
+                    if {$id == "miscimgs"} {
+                        append iin "Sub"
+                    }
+                }
+            }
+            set val [list Button - -id wb_$iin -gid wbut -tip $tin -img ^$in -msg NewElement -msgopts %I]
+            lappend vals $val {}
+            if {[llength $vals]>=4} {
+                lappend lst {row +} $vals
+                set vals {}
+            }
+        }
+        if {$vals != {}} {
+            lappend lst {row +} $vals
+        }
+        return [list {grid +} $lst]
+    }
+    
+    proc MkWidBut {_} {
+        return [MkButBar $_ widimgs]
+    }
+    
+    proc MkTtkBut {_} {
+        return [MkButBar $_ ttkimgs]
+    }
+    
+    proc MkItemBut {_} {
+        return [MkButBar $_ itemimgs]
+    }
+    
+    proc MkMiscBut {_} {
+        return [MkButBar $_ miscimgs]
+    }
+    
+    proc Item {_} {
+        # Show item elements
+        upvar $_ {}
+        Tk::gui win map $_ bmaps bb_items
+        NavSet $_ itembut
+    }
+    
+    proc Ttk {_} {
+        # Show TTK Widget elements
+        upvar $_ {}
+        Tk::gui win map $_ bmaps bb_ttk
+        NavSet $_ ttkbut
+    }
+    
+    proc Widget {_} {
+        # Show Widget elements
+        upvar $_ {}
+        Tk::gui win map $_ bmaps bb_wids
+        NavSet $_ widbut
+    }
+    
+    proc Other {_} {
+        # Show miscelaneous other elements
+        upvar $_ {}
+        Tk::gui win map $_ bmaps bb_misc
+        NavSet $_ miscbut
+    }
+    
+    proc EdVal {_} {
+        upvar $_ {}
+        tclLog EDVAL
+    }
+    
+    proc Open {_} {
+        # Open a GUI file.
+        upvar $_ {}
+        variable pc
+        set fn [Tk::getOpenFile -filetypes $pc(ftypes) -title [mc "Open GUI File"]  -parent $(w,.)]
+        if {$fn == {}} return
+        ClearTrees $_
+        FillTree $_ [set (file) $fn]
+        OpenTrees $_
+    }
+  
+    proc Open-Demos {_} {
+        # Open a file from the GUI demos.
+        upvar $_ {}
+        variable pc
+        set fn [::Tk::getOpenFile -filetypes $pc(ftypes) -title [mc "Open GUI Demos"] -initialdir /zvfs/mod/gui/demos  -parent $(w,.)]
+        if {$fn == {}} return
+        ClearTrees $_
+        FillTree $_ [set (file) $fn]
+        OpenTrees $_
+    }
+    
+    proc New {_} {
+        # Open a new GUILD toplevel.
+        upvar $_ {}
+        new
+    }
+    
+    proc Quit {_} {
+        # Quitthe application.
+        upvar $_ {}
+        if {[Notify $_ [mc "Ok to quit?"] -type okcancel] != "ok"} return
+        ::Delete $_
+    }
+   
+    proc GetData {_ {trim 1}} {
+        # Get data.
+        upvar $_ {}
+        set data [blt::tv::TreeDump $(w,gtree) -aval Attributes -vval Value -notop 1]
+        if {$trim} {
+            set data [string trim $data]
+            if {[string match {{#!/usr/bin/env} *} $data]} {
+                set data "#!/usr/bin/env [string range $data 17 end]"
+            }
+        }
+        return $data
+    }
+    
+    proc Save {_} {
+        # Save gui to file.
+        upvar $_ {}
+        variable pc
+        if {[set f $(file)] == {}} {
+            set f [tk_getSaveFile -initialfile unnamed.gui -parent $(w,.)  -filetypes $pc(ftypes)]
+        }
+        if {$f == {}} return
+        if {[file extension $f] != ".gui"} { append f .gui }
+        set of [file exists $f]
+        set (file) $f
+        set (chg) 0
+        set data [GetData $_]
+        *fwrite $f $data
+        if {!$of && $::tcl_platform(platform) == "unix"} {
+            if {[Notify $_ [mc "Make file executable"] -type yesno] == "yes"} {
+                file attributes $f -permissions ug+x
+            }
+        }
+        set (v,status) "[mc {Saved gui at}]: [clock format [clock seconds]]"
+    }
+    
+    proc Save-As {_} {
+        # Save gui to file.
+        upvar $_ {}
+        variable pc
+        set f [tk_getSaveFile -initialfile unnamed.gui -parent $(w,.) -filetypes $pc(ftypes)]
+        if {$f == {}} return
+        if {[file extension $f] != ".gui"} { append f .gui }
+        set data [GetData $_]
+        *fwrite $f $data
+    }
+    
+    proc Save-As-XML {_} {
+        # Save gui as XML file.
+        upvar $_ {}
+        variable pc
+        set f [tk_getSaveFile -parent $(w,.) -filetypes $pc(fxtypes)]
+        if {$f == {}} return
+        if {[file extension $f] != ".gui"} { append f .gui }
+        set data [GetData $_ 0]
+        set data [lib::xtl toxml $data]
+        *fwrite $f $data
+    }
+    
+    proc View-As-XML {_} {
+        # View gui as XML.
+        upvar $_ {}
+        variable pc
+        set data [GetData $_ 0]
+        set data [lib::xtl toxml $data -format 1]
+        Wiz::edit::new -data $data
+    }
+    
+    proc View-Warnings {_} {
+        # Show warnings in a toplevel window.
+        upvar $_ {}
+        if {$(warnings) == {}} return
+        Tk::gui toplevel $_ -id tl_warns
+        after 1000 [list Text insert $(w,warnmsg) end $(warnings)]
+    }
+    
+    proc RunErr {_ str} {
+        # Output warnings to msg window.
+        upvar $_ {}
+        Text insert $(w,warnmsgs) end $str
+        #Text see $(w,warnmsgs) end $str
+        append (warnings) $str
+    }
+    
+    proc Run {_ {nostyle 0}} {
+        # Run the GUI application.
+        upvar $_ {}
+        set (warnings) {}
+        Text delete $(w,warnmsgs) 1.0 end
+        if {$(file) == {}} {
+            Notify $_ [mc "Must save file first"]
+            return
+        }
+        if {$(chg)} {
+            set o [Notify $_ [mc "Save changes?"] -type yesnocancel]
+            switch -- $o {
+                yes     { Save $_ }
+                no      { }
+                cancel  { return }
+            }
+        }
+        set cmd [info nameofexecutable]
+        if {$nostyle} {
+            set ::env(GUI_OPTS) nostyle
+        }
+        if {[info exists ::tcl_warn(weldver)]} {
+            set var ${_}(runvar)
+            set (runvar) {}
+            after 300 [list bgexec $var -onerror [list $_ RunErr] -closeonkill 2000 $cmd -Wall $(file) & ]
+        } else {
+            exec $cmd $(file) &
+        }
+        set (v,status) "running gui: $(file)"
+        if {$nostyle} {
+            unset ::env(GUI_OPTS)
+        }
+        set (v,status) "[mc {Running gui}]"
+    }
+    
+    proc Run-Nostyle {_} {
+        # Run the GUI application with style suppressed.
+        Run $_ 1
+     }
+
+    proc AttrFocus {_} {
+        # Sync allattrs with current attr.
+        upvar $_ {}
+        set a $(w,attrs)
+        set aa $(w,allattr)
+        set ind [TreeView index $a focus]
+        if {$ind == {}} {
+            catch { TreeView entry select $aa top }
+            return
+        }
+        set lbl [TreeView entry cget $a $ind -label]
+        set nind [TreeView find $aa -name $lbl]
+        if {$nind == {}} {
+            set (v,status) "[mc {unknown attribute}]: $lbl"
+            return
+        }
+        TreeView entry select $aa $nind
+        set (curtype) [TreeView entry set $aa $nind Type]
+    }
+    
+    proc CheckAttr {_ idx name val} {
+        # Return 0 if Id is not set, except for the given idx.
+        upvar $_ {}
+        set tg $(t:gtree)
+        switch -- $name {
+            -id {
+                if {$val == {}} { return }
+                set lst [tree op find $tg -name $val -key val]
+                if {[set n [lsearch $lst $idx]]>=0} {
+                    set lst [lreplace $lst $n $n]
+                }
+                if {[llength $lst]!=0} {
+                    return "[mc {Warning: duplicate id}]"
+                }
+                if {![string is lower [string index $val 0]] } {
+                    return "[mc {Warning: must start with a lowercase}]"
+                }
+                if {![string is wordchar $val]} {
+                    return "[mc {Warning: must contain only wordchars}]"
+                }
+            }
+            -scroll {
+                if {![regexp {^[*news+*#]*$} $val]} {
+                    return "'$val' [mc {is not one of}]: '*news'"
+                }
+            }
+            -subpos -
+            -pos {
+                if {![regexp {^[*|_newstrlbYN+@,#0-9]*$} $val]} {
+                    return "'$val' [mc {is not one of}]: '*|_newstrlbYN+@,#0-9'"
+                }
+                     
+            }
+        }
+    }
+    
+    proc EditEnd {_ w val oldval ind col} {
+        # Reflect edit back.
+        upvar $_ {}
+        set tg $(t:gtree)
+        set t $(w,gtree)
+        set a $(w,attrs)
+        set aa $(w,allattr)
+        #set ind [TreeView index $a focus]
+        if {$ind == {}} return
+        set lbl [TreeView entry cget $a $ind -label]
+        #set val [TreeView entry set $a $ind Value]
+        if {[set msg [CheckAttr $_ $(curind) $lbl $val]] != {}} {
+            Notify $_ $msg -icon warning
+            return -code return
+        }
+        if {$lbl == "-id"} {
+            tree op set $tg $(curind) Id $val
+        }
+        tree op set $tg $(curind) Attributes($lbl) $val
+        incr (chg)
+        return $val
+    }
+    
+    proc EditOpts {_ w cind ind} {
+        # Return editing opts. Lookup type from allattr.
+        upvar $_ {}
+        return [list -type $(curtype)]
+    }
+
+    proc EditEndTree {_ cind ind} {
+        # Sync edit changes in gtree.
+        upvar $_ {}
+        set tg $(t:gtree)
+        set t $(w,gtree)
+        set a $(w,attrs)
+        set aa $(w,allattr)
+        if {$ind == {}} return
+        set col [lindex [TreeView column names $t] $cind]
+        switch -- $col {
+            Id {
+                set val [TreeView entry set $t $ind Id]
+                if {[set msg [CheckAttr $_ $(curind) -id $val]] != {}} {
+                    Notify $_ $msg -icon warning
+                }
+                if {$val != {}} {
+                    tree op set $tg $(curind) Attributes(-id) $val
+                } else {
+                    *catch { tree op unset $tg $(curind) Attributes(-id) }
+                }
+            }
+            Attributes {
+                foreach i {id pos subpos scroll} {
+                    set val [tree op get $tg $(curind) Attributes(-$i) {}]
+                    if {$val != {}
+                    && [set msg [CheckAttr $_ $(curind) -$i $val]]} {
+                        Notify $_ $msg -icon warning
+                    }
+                }
+                TreeView entry set $t $ind Id $val
+            }
+        }
+        incr (chg)
+        set id $(curind)
+        set (curind) {}
+        FillAttrs $_ $id
+    }
+
+    proc Delete {_} {
+        # Remove from defined attributes.
+        upvar $_ {}
+        set G $(t:gtree)
+        set a $(w,attrs)
+        set ind [TreeView index $a focus]
+        if {$ind == {}
+        || [TreeView entry children $a $ind] != {}} {
+            Notify $_ "[mc {Must select an attribute}]"
+            return
+        }
+        set lbl [TreeView entry cget $a $ind -label]
+        if {[Notify $_ "[mc {Ok to delete attribute}] '$lbl'" -type okcancel] != "ok"} {
+            return
+        }
+        TreeView delete $a $ind
+        tree op unset $G $(curind) Attributes($lbl)
+    }
+            
+    proc Add {_} {
+        # Add to defined attributes.
+        upvar $_ {}
+        set g $(w,gtree)
+        set G $(t:gtree)
+        set a $(w,attrs)
+        set aa $(w,allattr)
+        set ind [TreeView index $aa focus]
+        if {$ind == {}
+        || [TreeView entry children $aa $ind] != {}} {
+            Notify $_ "[mc {Select an attribute}]"
+            return
+        }
+        set lbl [TreeView entry cget $aa $ind -label]
+        set val [TreeView entry set $aa $ind Default]
+        if {[TreeView find $a -name $lbl] != {}} {
+            Notify $_ "[mc {Already defined}]: $lbl"
+            return
+        }
+        set nid [TreeView insert $a end $lbl -data [list Value $val]]
+        tree op set $G $(curind) Attributes($lbl) $val
+        update
+        TreeView entry select $a $nid
+        blt::tv::EditCell $a $nid Value
+    }
+    
+    proc CompleteNew {_ g} {
+        # Complete the insertion of grid, tabset, etc.
+        upvar $_ {}
+        foreach {pid pind} $(curins) break
+        set cid [$_ FillLevel $g $pid $pind]
+        update
+        TreeView open $(w,gtree) -recurse $cid
+        TreeView entry select $(w,gtree) $cid
+        Tk::gui dialogclose $_
+    }
+
+    proc GridOk {_} {
+        # Insert a grid.
+        upvar $_ {}
+        set g {{grid + -pos *}}
+        set x {}
+        set ff $(v,grd_celltype)
+        if {$ff == ""} { set ff Frame }
+        for {set i 0} {$i<$(v,grd_rows)} {incr i} {
+            set rr {}
+            for {set c 0} {$c<$(v,grd_cols)} {incr c} {
+                lappend rr $ff {}
+            }
+            lappend x [concat row + $(v,grd_rowattr)] $rr
+        }
+        lappend g $x
+        CompleteNew $_ $g
+    }
+    
+    proc FrameOk {_} {
+        # Insert a Frame.
+        upvar $_ {}
+        if {$(v,frm_toleft)} {
+            set g {{Frame + -pos * -subpos l}}
+        } else {
+            set g {{Frame + -pos *}}
+        }
+        set x {}
+        set ff $(v,frm_celltype)
+        if {$ff == ""} { set ff Frame }
+        for {set i 0} {$i<$(v,frm_childs)} {incr i} {
+            lappend x $ff {}
+        }
+        lappend g $x
+        CompleteNew $_ $g
+    }
+    
+    proc TabsetOk {_} {
+        # Insert a tabset.
+        upvar $_ {}
+        set g {{Tabset + -pos *}}
+        set x {}
+        foreach i $(v,tab_labels) {
+            lappend x [list tab + -label $i -pos *] {}
+        }
+        lappend g $x
+        CompleteNew $_ $g
+    }
+    
+    proc BboxOk {_} {
+        # Insert a buttonbox.
+        upvar $_ {}
+        set t $(w,gtree)
+        set g [format {{buttonbox - -vertical %d}} $(v,bbx_vertical)]
+        lappend g $(v,bbx_labels)
+        set code {}
+        if {$(v,bbx_addproc)} {
+            set scind [TreeView find $t -name script -uselabel -limit 1]
+            if {$scind == {}} {
+                Notify $_ "[mc {must define a script element to use 'Add Procs'}]"
+                return
+            }
+            foreach i $(v,bbx_labels) {
+                set i [string map {" " _} $i]
+                append code "\n    proc $i {_} {\n        upvar \$_ {}\n    }\n"
+            }
+        }
+        CompleteNew $_ $g
+        if {$code != {}} {
+            set data [TreeView entry set $t $scind Value]
+            TreeView entry set $t $scind Value $data$code
+        }
+    }
+    
+    proc PanedOk {_} {
+        # Insert a panedwindow.
+        upvar $_ {}
+        set g [format {{Panedwindow + -vertical %d -pos *}} $(v,pan_vertical)]
+        set x {}
+        for {set i 0} {$i<$(v,pan_num)} {incr i} {
+            lappend x [list pane + -pos *] {}
+        }
+        lappend g $x
+        CompleteNew $_ $g
+    }
+    
+    proc MenuOk {_} {
+        # Insert a Menu.
+        upvar $_ {}
+        set t $(w,gtree)
+        set g [format {{{%s} + -label {%s}}} $(curelem) $(v,men_label)]
+        set code {}
+        set x {}
+        if {$(v,men_addproc)} {
+            set scind [TreeView find $t -name script -uselabel -limit 1]
+            if {$scind == {}} {
+                Notify $_ "[mc {must define a script element to use 'Add Procs'}]"
+                return
+            }
+        }
+        foreach i $(v,men_items) {
+            if {$(v,men_subtype) == "menu"} {
+                lappend x [list menu - -label $i] {}
+            } else {
+                lappend x $(v,men_subtype) $i
+                if {$(v,men_addproc)} {
+                    set i [string map {" " _} $i]
+                    append code "\n    proc $i {_} {\n        upvar \$_ {}\n    }\n"
+                }
+            }
+        }
+        lappend g $x
+        CompleteNew $_ $g
+        if {$code != {}} {
+            set data [TreeView entry set $t $scind Value]
+            TreeView entry set $t $scind Value $data$code
+        }
+
+    }
+    proc ButOk {_} {
+        # Insert a Button, Checkbutton, etc.
+        upvar $_ {}
+        set t $(w,gtree)
+        set g [list $(curelem) $(v,men_label)]
+        set code {}
+        set x {}
+        if {$(v,but_addproc)} {
+            set scind [TreeView find $t -name script -uselabel -limit 1]
+            if {$scind == {}} {
+                Notify $_ "[mc {must define a script element to use 'Add Proc'}]"
+                return
+            }
+            set i [string map {" " _} $(v,men_label)]
+            append code "\n    proc $i {_} {\n        upvar \$_ {}\n    }\n"
+        }
+        CompleteNew $_ $g
+        if {$code != {}} {
+            set data [TreeView entry set $t $scind Value]
+            TreeView entry set $t $scind Value $data$code
+        }
+
+    }
+    
+    proc TreeOk {_} {
+        # Insert a treeview.
+        upvar $_ {}
+        set g [format {{TreeView + -titles {%s} -istable %d -pos *}} $(v,tre_titles) $(v,tre_hidetree)]
+        lappend g {}
+        CompleteNew $_ $g
+    }
+    
+    proc Cancel {_} {
+        # Close the dialog.
+        upvar $_ {}
+        Tk::gui dialogclose $_
+    }
+    
+    proc Value {_} {
+        upvar $_ {}
+        set t $(w,gtree)
+        set el [TreeView entry cget $t focus -label]
+        switch -- $el {
+            Button - Checkbutton - Radiobutton - Label {
+            }
+            default {
+                Tk::gui toplevel $_ -id edval
+                return
+            }
+        }
+        set val {}
+        set rc [Tk::getInput -var val -text [mc Value] -title [mc "Element Value"] -opts {-width 30}  -parent $(w,.)]
+        if {!$rc} return
+        TreeView entry conf $t focus -label $val
+    }
+
+    namespace eval Edval {
+        # Edit value.
+        
+        Mod upvars _
+        
+        proc Main {_} {
+            # Initialize edit of value.
+            upvar $_ {}
+            set w $(w,gtree)
+            set t $(w,edv_txt)
+            set ind $(curind)
+            if {$ind == {}} return
+            set val [TreeView entry set $w $ind Value]
+            Text delete $t 1.0 end
+            Text insert $t end $val
+            Text mark set $t insert 1.0
+            Text see $t insert
+            focus $t
+            
+        }
+        
+        proc Ok {_} {
+            # Accept edit.
+            upvar $_ {}
+            set ind $(curind)
+            set data [Text get $(w,edv_txt) 1.0 end-1c]
+            if {![info complete $data]} {
+                $_ Notify "[mc {Mising close brace or quote?}]" -icon error
+                return
+            }
+            if {[info complete "\{$data"]} {
+                $_ Notify "[mc {Unmatched open brace?}]" -icon error
+                return
+            }
+            TreeView entry set $(w,gtree) $ind Value $data
+            set (v,curval) $data
+            Tk::gui dialogclose $_
+        }
+        
+        proc Cancel {_} {
+            # Cancel edit.
+            Tk::gui dialogclose $_
+        }
+        
+    }
+    
+    proc Introspect {_} {
+        # Start the Tk Introspection application.
+        upvar $_ {}
+        variable pc
+        if {[catch {TreeView entry cget $(w,gtree) focus -label} ff]} {
+            set ff {}
+        }
+        ::Wiz introspect -remotes 0 -sandbox $ff
+    }
+  
+    proc Gradient {_} {
+        # Start the Gradient application.
+        upvar $_ {}
+        variable pc
+        if {[catch {TreeView entry cget $(w,gtree) focus -label} ff]} {
+            set ff {}
+        }
+        exec $Mod::pd(dirname)/gui/demos/gradient.gui &
+    }
+  
+    proc ButOpen {_} {
+        upvar $_ {}
+        set gobj [Tk::gui dialogobj $_]
+        upvar $gobj g
+        wm title $g(w,.) "New $(curelem)"
+    }   
+
+    namespace eval Gmenu {
+        
+        Mod upvars _ pc
+        Mod upcmds Introspect
+                
+        proc Change-Element {_} {
+            # Change the element type (warning: does not recheck attributes).
+            upvar $_ {}
+            variable pc
+            set t $(w,gtree)
+            set old [TreeView entry cget $t focus -label]
+            set val {}
+            set rc [Tk::getInput -var val -title "[mc {Change element type}]" -text "[mc {New element}]" -initial $old -values $pc(elnames) -combo 1  -parent $(w,.)]
+            if {$rc} {
+                TreeView entry conf $t focus -label $val
+            }
+        }
+
+
+        proc Geditor {_} {
+            # Edit the GUI file in geditor.
+            upvar $_ {}
+            if {$(file) == {}} {
+                $_ Notify [mc "Must save as file first"]
+                return
+            }
+            #NOWARN:
+            ::app::geditor::new $(file)
+        }
+        
+        proc Wiz-Editor {_} {
+            # Edit the GUI file in the Wiz editor.
+            upvar $_ {}
+            if {$(file) == {}} {
+                $_ Notify [mc "Must save as file first"]
+                return
+            }
+            Wiz::edit::new $(file)
+        }
+
+        proc Ted-Editor {_} {
+            # Edit the GUI file in the Ted editor.
+            upvar $_ {}
+            if {$(file) == {}} {
+                $_ Notify [mc "Must save as file first"]
+                return
+            }
+            set teddir $Mod::pd(dirname)/../ted
+
+            eval exec [info nameofexecutable]  $teddir/ted.tcl  $(file) &
+        }
+
+        proc Cut {_} {
+            # Cut current element
+            upvar $_ {}
+            set g $(w,gtree)
+            set ind [TreeView index $g focus]
+            if {$ind == {}} return
+            incr (chg)
+            set dat [blt::tv::TreeDump $g -aval Attributes -vval Value -start $ind]
+            set (guicopy) $dat
+            TreeView delete $g $ind
+        }
+        
+        proc Copy {_} {
+            # Copy current element
+            upvar $_ {}
+            set g $(w,gtree)
+            set ind [TreeView index $g focus]
+            if {$ind == {}} return
+            set dat [blt::tv::TreeDump $g -aval Attributes -vval Value -start $ind]
+            set (guicopy) $dat
+        }
+        
+        proc Paste {_} {
+            # Paste cut or copied element.
+            upvar $_ {}
+            set g $(w,gtree)
+            set isch $(v,child)
+            if {![llength $(guicopy)]} return
+            incr (chg)
+            set ind [TreeView index $g focus]
+            if {$isch} {
+                if {$ind == {}} {
+                    set pid 0
+                    set pind 0
+                } else {
+                    set pid $ind
+                    set pind 0
+                }
+            } else {
+                if {$ind == {}} {
+                    $_ Notify [mc "must select node"]
+                    return
+                }
+                set pid [TreeView entry parent $g $ind]
+                set pind [lsearch [TreeView entry children $g $pid] $ind]
+            }
+            set cid [$_ FillLevel $(guicopy) $pid $pind]
+            update
+            TreeView open $g -recurse $cid
+            TreeView entry select $g $cid
+        }
+        
+        proc Move-Before {_} {
+            # Move element up before previous sibling.
+            upvar $_ {}
+            set g $(w,gtree)
+            catch { TreeView move $g focus before prevsibling }
+            update
+            TreeView entry select $g focus
+        }
+        
+        proc Move-After {_} {
+            # Move element down after next sibling.
+            upvar $_ {}
+            set g $(w,gtree)
+            catch { TreeView move $g focus after nextsibling }
+            update
+            TreeView entry select $g focus
+        }
+        
+        proc Move-To_Top {_} {
+            # Make element the first sibling.
+            upvar $_ {}
+            set g $(w,gtree)
+            set ind [TreeView index $g focus]
+            if {$ind == {}} return
+            while 1 {
+                if {[catch { TreeView move $g focus before prevsibling }]} break
+                set nind [TreeView index $g focus]
+                if {$nind == {} || $nind == $ind} break
+                set ind $nind
+            }
+            update
+            TreeView entry select $g focus
+        }
+        
+        proc Move-To_Bottom {_} {
+            # Make element the last sibling.
+            upvar $_ {}
+            set g $(w,gtree)
+            set ind [TreeView index $g focus]
+            if {$ind == {}} return
+            while 1 {
+                if {[catch { TreeView move $g focus after nextsibling }]} break
+                set nind [TreeView index $g focus]
+                if {$nind == {} || $nind == $ind} break
+                set ind $nind
+            }
+            update
+            TreeView entry select $g focus
+        }
+        
+        proc Move-To_Parent {_} {
+            # Move element into parent.
+            upvar $_ {}
+            set g $(w,gtree)
+            set pid [TreeView index $g parent]
+            if {$pid == 0 || [catch { TreeView move $g focus before parent } erv]} {
+                set (v,status) [mc "nothing to do"]
+                return
+            }
+            update
+            TreeView entry select $g focus
+        }
+        
+        proc Move-As_Child {_} {
+            # Move element as child of next sibling.
+            upvar $_ {}
+            set g $(w,gtree)
+            catch { TreeView move $g focus into prevsibling }
+            update
+            TreeView entry select $g focus
+        }
+        
+        proc Manual-Page {_} {
+            # Show manual page for current element.
+            upvar $_ {}
+            set g $(w,gtree)
+            set ind [TreeView index $g focus]
+            if {$ind == {}} return
+            set name [TreeView get $g $ind]
+            lib::manview find $name
+        }
+    }
+
+    proc Main {_ args} {
+        # Entry point for Guild
+        upvar $_ {}
+        variable pc
+        if {!$pc(isinit)} { Init }
+        set t $(w,gtree)
+        set a $(w,attrs)
+        set aa $(w,allattr)
+        set (t:gtree) [tree create]
+        TreeView conf $t -tree $(t:gtree) -allowduplicates 1
+        $(t:gtree) label 0 ""
+        
+        #styles item $t column #0
+        set sc {::blt::tv::SortColumn %W %C}
+        TreeView column conf $t #0 -command $sc
+        foreach i {Id Value Attributes Tag} {
+            TreeView column insert $t end $i -command $sc -title [mc $i]
+            styles item $t column $i
+        }
+        TreeView column conf $t Value -hide 1
+        TreeView column conf $t Attributes -edit 1
+        TreeView column conf $t Id -edit 1
+        #styles item $a column #0
+        TreeView column conf $a #0 -title [mc Attribute] -command $sc
+        foreach i {Value} {
+            TreeView column insert $a end $i -command $sc -title [mc $i]
+            styles item $a column $i
+        }
+        TreeView column conf $a Value -edit 1
+        TreeView column conf $aa #0 -title [mc Name] -command $sc
+        foreach i {Default Description Type} {
+            TreeView column insert $aa end $i -command $sc -title [mc $i]
+            styles item $aa column $i
+        }
+        set s $(w,tstyle)
+        TreeView conf $s -allowduplicates 1
+        TreeView column conf $s #0 -title [mc {Pattern}]
+        TreeView column insert $s end Value -edit 1
+        styles item $s column Value
+
+        set (file) [lindex $args 0]
+        if {$(file) == {}} {
+            update
+            set (file) [Tk::getOpenFile -filetypes $pc(ftypes) -title [mc "Open GUI File"] -parent $(w,.)]
+        } elseif {[file isdirectory $(file)]} {
+            set (file) [Tk::getOpenFile  -initialdir $(file) -filetypes $pc(ftypes) -title [mc "Open GUI File"] -parent $(w,.)]
+        }
+        if {$(file) != {}} {
+            if {![file exists $(file)]} {
+                Notify $_ "[mc {File not found}]: $(file)"
+            } else {
+                FillTree $_ $(file)
+                set (title) [file tail $(file)]
+            }
+        } elseif {[Notify $_ [mc "Insert application template?"] -type yesno] == "yes"} {
+            FillLevel $_ $pc(default:code)
+            FillAttrs $_ top
+        }
+        bind $a <<TreeViewFocusEvent>> [list $_ AttrFocus]
+        #bind $a <<TreeViewEditEnd>> [list $_ EditEnd]
+        set eo [list -optscmd [list $_ EditOpts]]
+        TreeView column conf $a Value -editopts $eo -validatecmd [list $_ EditEnd] 
+        bind $t <<TreeViewEditEnd>> [list $_ EditEndTree %x %y]
+        wm title $(w,.) "[mc GUILD]: $(title)"
+        OpenTrees $_
+        bind $t <<TreeViewFocusEvent>> [list $_ FillAttrs focus]
+        #Button conf $(w,widbut) -relief sunken
+        NavSet $_ widbut
+        if {[llength $args]>1} {
+            set nam [lindex $args 1]
+            $t open 0
+            set id [$t find -name $nam -column Id -limit 1]
+            if {$id == {}} return
+            $t open $id
+            $t entry select $id
+        }
+        
+    }
+    
+    proc Cleanup {_} {
+        upvar $_ {}
+        if {$(chg)} {
+            set o [Notify $_ [mc {Save changes?}] -type yesnocancel]
+            switch -- $o {
+                yes {
+                    Save $_
+                }
+                no {
+                }
+                cancel {
+                    return -code break
+                }
+            }
+        }
+    }
+    
+}
+
+{Toplevel + -ns Edval -id edval -openmsg Main -title "Edit Value" -esc 0} {
+    # "Dialog for editing the element value"
+    {Text - -id edv_txt -find 1 -scroll * -pos *} {}
+    {Frame + -subpos */l -pos _} {
+        Button Ok Button Cancel
+    }
+}
+
+{Toplevel + -title "Grid" -id grid_new -withdraw 1} {
+    # "Dialog for adding a grid"
+    {grid + -matte 5 -colpos {e w_} -pos * -subpos _} {
+        {row +} { Label "Rows:" {Spinbox - -id grd_rows -type Int -focus 1} {} }
+        {row +} { Label "Columns:" {Spinbox - -id grd_cols -type Int} {} }
+        {row +} { Label "Cell Type:" {Spinbox - -id grd_celltype} {} }
+        {row +} { Label "Row Attrs:" {Entry - -id grd_rowattr} {} }
+    }
+    {Frame + -subpos /*l -pad 0,4 -pos _} {
+        {Button - -msg GridOk} Ok
+        Button Cancel
+    }
+}
+
+{Toplevel + -title "Frame" -id frame_new -withdraw 1} {
+    # "Dialog for adding a frame"
+    {grid + -matte 5 -colpos {e w_} -pos * -subpos _} {
+        {row +} { Label "Num Child Cells:" {Spinbox - -id frm_childs -type Int -focus 1} {} }
+        {row +} { Label "Child Cell Type:" {Spinbox - -id frm_celltype} {} }
+        {row +} { Label "Pack Left To Right:" {Checkbutton - -id frm_toleft} {} }
+    }
+    {Frame + -subpos /*l -pad 0,4 -pos _} {
+        {Button - -msg FrameOk} Ok
+        Button Cancel
+    }
+}
+
+{Toplevel + -title "Panedwindow" -id paned_new -withdraw 1} {
+    # "Dialog for adding a panedwindow"
+    {grid + -matte 5 -colpos {e w_} -pos *} {
+        {row +} { Label "Panes:" {Spinbox - -id pan_num -type Int -focus 1} {} }
+        {row +} { Label "Vertical:" {Checkbutton - -id pan_vertical} {} }
+    }
+    {Frame + -subpos /*l -pad 0,4 -pos _} {
+        {Button - -msg PanedOk} Ok
+        Button Cancel
+    }
+}
+
+{Toplevel + -title "Menu" -id men_new -withdraw 1} {
+    # "Dialog for adding a Menu/menu"
+    {grid + -matte 5 -colpos {e w_} -pos *} {
+        {row +} { Label "Menu Label:" {Entry - -id men_label -focus 1} {} }
+        {row +} { Label "Sub-Items:" {Entry - -id men_items} {} }
+        {row +} { Label "Sub-Item Type:" {Spinbox - -id men_subtype -listvar pc(menutypes) -combo 1} {} }
+        {row +} { Label "Add Procs:" {Checkbutton - -id men_addproc -tip "Add procs to 'script' for each non-menu sub-item"} {} }
+    }
+    {Frame + -subpos /*l -pad 0,4 -pos _} {
+        {Button - -msg MenuOk} Ok
+        Button Cancel
+    }
+}
+
+{Toplevel + -title "New Element" -id but_new -withdraw 1 -openmsg ButOpen} {
+    # "Dialog for adding a Button"
+    {grid + -matte 5 -colpos {e w_} -pos *} {
+        {row +} { Label "Value:" {Entry - -id but_label -focus 1} {} }
+        {row +} { Label "Add Proc:" {Checkbutton - -id but_addproc -tip "Add proc to 'script' for item"} {} }
+    }
+    {Frame + -subpos /*l -pad 0,4 -pos _} {
+        {Button - -msg ButOk} Ok
+        Button Cancel
+    }
+}
+
+{Toplevel + -title "TreeView" -id tv_new -withdraw 1} {
+    # "Dialog for adding a treeview"
+    {grid + -matte 5 -colpos {e w_} -pos *} {
+        {row +} { Label "Titles:" {Entry - -id tre_titles -focus 1} {} }
+        {row +} { Label "Is Table:" {Checkbutton - -id tre_hidetree} {} }
+    }
+    {Frame + -subpos /*l -pad 0,4 -pos _} {
+        {Button - -msg TreeOk} Ok
+        Button Cancel
+    }
+}
+
+{Toplevel + -title "Tabset" -id tab_new -withdraw 1} {
+    # "Dialog for adding a tabset"
+    {grid + -matte 5 -colpos {e w_} -pos *} {
+        {row +} { Label "Tab Labels:" {Entry - -id tab_labels -focus 1} {} }
+    }
+    {Frame + -subpos /*l -pad 0,4 -pos _} {
+        {Button - -msg TabsetOk} Ok
+        Button Cancel
+    }
+}
+
+{Toplevel + -title "Buttonbox" -id bbx_new -withdraw 1} {
+    # "Dialog for adding a buttonbox"
+    {grid + -matte 5 -colpos {e w_} -pos *} {
+        {row +} { Label "Button Labels:" {Entry - -id bbx_labels -focus 1} {} }
+        {row +} { Label "Add Procs:" {Checkbutton - -id bbx_addproc -tip "Add proc to 'script' for item"} {} }
+        {row +} { Label "Vertical:" {Checkbutton - -id bbx_vertical} {} }
+    }
+    {Frame + -subpos /*l -pad 0,4 -pos _} {
+        {Button - -msg BboxOk} Ok
+        Button Cancel
+    }
+}
+
+{Toplevel + -title "Add Style Pattern" -id tl_style_add -ns StyleAdd -openmsg Main} {
+    # "Dialog for adding a style pattern"
+    {Frame + -matte 5 -pos *} {
+        {grid + -colpos {w w_} -pos *} {
+            {row +} {
+                {Label} "Id:"
+                {Spinbox - -id sty_name -focus 1 -combo 1 -autofill 1 -tip "Window name from -id"} {}
+            }
+            {row +} {
+                {Label} "Class:"
+                {Spinbox - -id sty_class -combo 1 -autofill 1 -tip "Widget class"} {}
+            }
+            {row +} {
+                {Label} "Config:"
+                {Entry - -id sty_initattr -tip "Config name/value pairs (or use 'Add Config')"} {}
+            }
+        }
+    }
+     {Frame + -subpos /*l -pad 0,4 -pos _} {
+        Button Ok
+        Button Cancel
+    }
+}
+
+{Toplevel + -title "Run Warnings" -id tl_warns} {
+    {Text - -id warnmsg -pos * -scroll * -find 1} {}
+}
+
+{Toplevel + -title "Add Style Config" -id tl_style_conf -ns StyleConf -openmsg Main} {
+    # "Dialog for adding a style config"
+    {Frame + -pad 5,5 -pos *} {
+        {Tabset + -id stc_tab -pos *} {
+            {tab + -label Config} {
+                {Frame + -pad 10,10} {
+                    {grid + -pos _} {
+                        {row + -pos _} {
+                            {Label} "Option Name:"
+                            {Spinbox - -id stc_config -pos _ -combo 1 -autofill 1 -tip "Configuration options beginning with '-'"} {}
+                        }
+                        {row + -pos _} {
+                            {Label} "Option Value:"
+                            {Entry - -id stc_cvalue -tip "Value for config" -pos _} {}
+                        }
+                    }
+                }
+            }
+            {tab + -label Macro} {
+                {Frame + -pad 10,10} {
+                    {grid + -pos _} {
+                        {row + -pos _} {
+                            {Label} "Macro Name:"
+                            {Spinbox - -id stc_macro -pos _ -combo 1 -autofill 1 -tip "Macro options beginning with '@'"} {}
+                        }
+                        {row + -pos _} {
+                            {Label} "Macro Value:"
+                            {Entry - -id stc_mvalue -tip "Value for macro" -pos _} {}
+                        }
+                    }
+                }
+             }
+            {tab + -label "DB Option"} {
+                {Frame + -pad 10,10} {
+                    {grid + -pos _} {
+                        {row + -pos _} {
+                            {Label} "DB Option:"
+                            {Spinbox - -id stc_dboption -pos _ -combo 1 -autofill 1 -tip "Database options beginning with '@'"} {}
+                        }
+                        {row + -pos _} {
+                            {Label} "DB Value:"
+                            {Entry - -id stc_dvalue -tip "Value for DB config" -pos _} {}
+                        }
+                    }
+                }
+            }
+            {tab + -label "Match next -"} {
+                {Frame + -pad 10,10} {
+                    {Checkbutton - -id stc_usenext -tip "Use body of next pattern"} {Match Next}
+                }
+            }
+        }
+    }
+    {Frame + -subpos /*l -pad 0,4 -pos _} {
+        Button Ok
+        Button Cancel
+    }
+}
+
+
+{Toplevel + -title "GUI Builder" -geom 1000x480 -id main} {
+    # "Dialog for main window"
+
+    # "####### BEGIN STYLES #########"
+    style {
+        Toplevel {
+            @eval {
+                font conf TkHeadingFont -size 10
+            }
+            @defimages {
+                vscrbar "! XPM2\n5 7 2 1\n. c none\nX c steelblue\nXXXXX\n.....\n.....\nXXXXX\n.....\n.....\nXXXXX"
+                hscrbar "! XPM2\n7 5 2 1\n. c none\nX c steelblue\nX..X..X\nX..X..X\nX..X..X\nX..X..X\nX..X..X"
+                horzbg!        "R0lGODlhAgAdAPQAAKamprGxscDAwMfHx8rKytHR0dfX19zc3N3d3eDg4OPj4+Xl5efn5+vr6+3t
+7e/v7/Pz8/f39/r6+v39/f7+/gAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACH5BAAA
+AAAALAAAAAACAB0AAAUk4PNQ1DRJUhRBkNg0DLMsSm3fOJ4kx2EYhQKBIBAEAgDAYBACADs="
+
+            }
+            @defgradients {
+                !lttlb   { RoyalBlue LightSteelBlue -width 20 -height 10 -rotate 90 }
+                !lttl  { Navy CornflowerBlue -width 20 -height 10 -rotate 90 }
+                !vttlb   { RoyalBlue LightSteelBlue -width 20 -height 10 }
+                !vttl   { Navy CornflowerBlue -width 20 -height 10 }
+            }
+
+            *_hscroll.tile2 ^!lttlb
+            *_hscroll.tile ^!lttl
+            *_vscroll.tile2 ^!vttlb
+            *_vscroll.tile ^!vttl
+            *_vscroll.image ^vscrbar
+            *_hscroll.image ^hscrbar
+            *_hscroll.background LightSteelBlue
+            *_vscroll.background LightSteelBlue
+            *Scrollbar.width 14
+
+            @deficons {
+                fold1 folder_blue
+                fold1o folder_blue_open
+            }
+            @defgradients {
+                !lblbg {LightSteelBlue Ivory -width 80 -height 10 -rotate 90 }
+                !vlblbg {LightSteelBlue Ivory -width 200 -height 10  }
+                vlblbg {LightSteelBlue Ivory -width 200 -height 10  }
+                !altgrad {LightSteelBlue Ivory -width 20 -height 10 -rotate 90 -gamma 2}
+                !butbg {#d9d9d9 Ivory -width 30 -height 10 -rotate 90}
+                !ttlgrad {SteelBlue LightSteelBlue -width 20 -height 10 -rotate 90}
+                !sel   {  MidnightBlue SteelBlue -width 20 -height 5 -rotate 90 }
+                maingrad   { LightSteelBlue White -width 1000 -height 5 }
+            }
+            @defimages {
+                ball blueball 
+                Toplevel gui-window    Frame gui-frame    Labelframe gui-labelframe   
+                Panedwindow gui-vpaned    grid gui-table    Tabset gui-tabset   
+                mapwin gui-mapwin    Canvas canvas    Button gui-button   
+                Checkbutton gui-checkbutton    Radiobutton gui-radiobutton   
+                Menubutton gui-optionmenu    Label gui-label    Message gui-message   
+                Entry gui-entry    Spinbox gui-spinbutton    Text gui-text   
+                Listbox gui-list    TreeView gui-ctree    Table gui-clist   
+                Scale gui-progressbar    Scrollbar gui-vscrollbar   
+                Menu gui-menubar    statusbar gui-statusbar    script exec   
+                eval gui-source   style style   attr 1rightarrow
+                menu gui-submenu buttonbox gui-hbuttonbox
+            
+                x gui-menuitem
+                r gui-radiomenuitem
+                c gui-checkmenuitem
+                sep gui-hseparator
+                hsep gui-hseparator
+                vsep gui-vseparator
+                comment star
+                row gui-tablerow 
+                tab gui-tabsetitem
+                pane gui-vpaneditem
+                include gui-save
+            
+                TFrame gui-frame TLabelframe gui-labelframe
+                TPanedwindow gui-vpaned TNotebook gui-tabset
+                TButton gui-button
+                TMenubutton gui-optionmenu TCheckbutton gui-checkbutton
+                TRadiobutton gui-radiobutton TLabel gui-label
+                Combobox gui-entry
+                Treeview gui-ctree
+                TProgress gui-progressbar TScrollbar gui-vscrollbar
+                TSeparator gui-hseparator
+                TSizegrip frame_edit
+            }
+        }
+        Menu -
+        .status -
+        Button { -tile ^!butbg }
+        Button { -tile ^horzbg! -relief groove }
+        Button { -compound left }
+        Entry - Spinbox { -highlightthickness 0 }
+        Checkbutton - Radiobutton { -bd 0 -padx 0 -anchor w}
+        Panedwindow { -showhandle 0 -sashwidth 4 -bd 0 }
+        Tabset { -slant right }
+        TreeView {
+            @@ { -makestyles {alt title} }
+            -bd 1 -underline 1 -altstyle alt
+            -selecttile ^!sel
+            -selectbackground #085d8c    -selectforeground White
+            -nofocusselectbackground #085d8c   -nofocusselectforeground White
+            @eval { [winfo parent %W] conf -bd 2 -relief raised }
+        }
+        TreeView::style::alt { -tile ^!altgrad }
+        TreeView::style::title { -tile ^!ttlgrad -shadow LightGray}
+        TreeView::column { -bd 1 -relief raised -titlestyle title}
+        TreeView::column::#0.gtree {
+            @eval {
+                TreeView style create textbox %W Col0 -font TkDefaultFont -priority 2
+            }
+            -title Element
+            -style Col0
+        }
+        TreeView::column::* { -justify left -titlejustify left }
+        TreeView::column::#0.allattr -
+        TreeView::column::#0.attrs {
+            @eval {
+                TreeView style create textbox %W Col0 -font TkDefaultFont -priority 2; # -bg #d9d9d9
+            }
+            -title Element
+            -style Col0
+        }
+        TreeView::column::Description.allattr {
+            -autowidth 300
+        }
+        Button { -bd 1 }
+        Button@wbut {
+            -bd 0
+        }
+        Button.wb_* { -tile {} }
+        .bb_* {
+            *background LightSteelBlue *activeBackground SteelBlue *highlightThickness 0
+        }
+    
+        .attrs {
+            -height 100
+            -bg White
+            -leaficons ^attr
+            @eval { %W style conf alt -bg WhiteSmoke }
+        }
+        .allattr {
+            -height 150
+            -bg White
+            -leaficons ^ball
+            -icons {^fold1 fold1o}
+            @eval { %W style conf alt -bg Lavender }
+            @bind { <Double-1> Add <Return> Add}
+        }
+        .butcv  {   @@ { -icon file } }
+        .butadd {   @@ { -icon up } }
+        .butdel {   @@ { -icon down } }
+        .butrun {   @@ { -icon exec } }
+        .butgrad {  @@ { -icon exec } }
+        .butispec { @@ { -icon viewmag } }
+        .butsave {  @@ { -icon filesave } }
+        .curval { -state readonly -tile ^!butbg}
+        .gtree {
+            -bg White #-tile ^maingrad
+            -leaficons ^ball
+            @bind { <3> !gmenu }
+        }
+        .llbl - .slbl { -relief ridge -tile ^!lblbg }
+        .*fram { -bd 2 -relief raised }
+        .child  { -tile ^!ttlgrad -bd 1 -relief raised -font TkHeadingFont -pady 0 -padx 5}
+        .buts   { -tile ^!lblbg }
+        .afram  { -tile ^!vlblbg }
+        .sfram  { -tile ^!lblbg }
+        .tstyle {
+            @bind { <3> !sty_menu }
+        }
+        .warnmsgs { -height 2 }
+    }
+    
+    # "####### END STYLES #########"
+
+    {Menu + -id sty_menu -ns Styles } {
+        x Move-After
+        x Move-Before
+    }
+    
+    {Menu + -label "Guild Main Menu"} {
+        {menu + -label File} {
+            x Open
+            x New
+            {x - -key <Alt-s>} Save
+            x Save-As
+            x Save-As-XML
+            x View-As-XML
+            sep {}
+            {x - -key <Alt-r>} Run
+            x Run-Nostyle
+            x Open-Demos
+            x View-Warnings
+            sep {}
+            x Quit
+        }
+        {menu + -label Edit -ns Gmenu} {
+            {x - -key <Control-x>} Cut
+            {x - -key <Control-c>} Copy
+            {x - -key <Control-v>} Paste
+            sep {}
+            x Change-Element
+            sep {}
+            x Wiz-Editor
+            x Geditor
+            x Ted-Editor
+            x Introspect
+        }
+        {menu + -label Help} {
+            x About
+            x Primer
+        }
+    }
+    
+    {Menu + -label "Guild Element Menu" -id gmenu -ns Gmenu} {
+        x Move-Before
+        x Move-After
+        x Move-To_Top
+        x Move-To_Bottom
+        sep {}
+        x Move-To_Parent
+        x Move-As_Child
+        sep {}
+        x Manual-Page
+    }
+    
+    {statusbar} {}
+    {Frame + -id buts -subpos l| -pos _} {
+        {Button - -id butsave -underline 0} Save
+        {Button - -id butrun -underline 0} Run
+        {Button - -id butispec} Introspect
+        {Button - -id butgrad -underline 0} Gradient
+    }
+    {Panedwindow + -pos *} {
+        {pane + -width 450} {
+            {Panedwindow + -vertical 1 -pos * -subconf { -stretch always } } {
+                {pane +} {
+                    {Frame + -id afram -pos |l} {
+                        {Checkbutton - -id child -pos _e -tip "Insert element as child of current element"} Child
+                        {Frame + -id bfram -pos _} {
+                            {Button - -id widbut -pos _} Widget
+                            {Button - -id miscbut -pos _} Other
+                            {Button - -id itembut -pos _} Item
+                            {Button - -id ttkbut -pos _} Ttk
+                        }
+                        {Frame + -id mfram -pos _} {
+                            {mapwin + -id bmaps -pos *} {
+                                {Frame + -id bb_wids  -useeval {%_ MkWidBut}  -pos *} {}
+                                {Frame + -id bb_items -useeval {%_ MkItemBut} -pos *} {}
+                                {Frame + -id bb_misc  -useeval {%_ MkMiscBut} -pos *} {}
+                                {Frame + -id bb_ttk   -useeval {%_ MkTtkBut}  -pos *} {}
+                            }
+                        }
+                    }
+                    {TreeView - -id gtree -focus 1 -scroll * -pos * -find 1 -makestyles alt} {}
+                }
+                {pane +} {
+                    {Text - -id warnmsgs -pos * -scroll * -find 1} {}
+                }
+            }
+        }
+        {pane +} {
+            {mapwin + -id amaps -pos *} {
+                {Frame + -id wattrs -pos *} {
+                    {Frame + -matte 1 -subpos l -pos _} {
+                        {Button - -id butcv -tip "Edit the value"} Value 
+                        {Entry - -id curval -pos *} Value:
+                    }
+                    {Panedwindow + -vertical 1 -pos *} {
+                        {pane +} {
+                            {Frame + -pos *} {
+                                {Frame + -subpos l -pos _} {
+                                    {Button - -id butdel} Delete
+                                    {Label - -id slbl -pos *} "Defined Attributes"
+                                }
+
+                                {TreeView - -id attrs -scroll * -pos *} {}
+                            }
+                        }
+                        {pane +} {
+                            {Frame + -subpos l -pos _} {
+                                {Button - -id butadd} Add
+                                {Label - -id llbl -pos l*} "Available Attributes"
+                            }
+                            {TreeView - -id allattr -scroll * -pos * -find 1} {}
+                        }
+                    }
+                }
+                {Frame + -id wstyle -pos *} {
+                    {TreeView - -id tstyle -scroll * -pos * -find 1} {}
+                    {Frame + -id sfram -matte 1 -subpos l -pos _} {
+                        {Button - -msg !tl_style_add} New
+                        {Button - -msg StyleConfig} "Add Config"
+                        {Button - -msg StyleDel} Delete
+                    }
+                }
+            }
+        }
+    }
+}

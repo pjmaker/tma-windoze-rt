@@ -1,0 +1,23 @@
+#!/usr/bin/env wize
+# "File included by edit.gui"
+
+style {
+    Menu@filegrp { -background red }
+}
+
+{Menu + -id mainmenu -pos -} {
+    {menu +  -label File  -subgid filegrp} {
+        x Open
+        x New
+        x Exit
+    }
+    {menu +  -label Edit} {
+        x Cut
+        x Copy
+        x Paste
+        {menu +  -label Edit} {
+            x Paste
+        }
+        x Find
+    }
+}

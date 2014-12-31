@@ -1,0 +1,95 @@
+#!/usr/bin/env wize
+
+script {
+    # Demo using "Canvas -progressbar"
+    set _(v,pbtop)  50
+    set _(v,pbleft) 0
+    set _(v,pbbot)  50
+    set _(after) {}
+
+    proc CountDown {_ {dir 1}} {
+        # Code to animate the progressbars.
+        upvar $_ {}
+        if {![info exists $_]} { return }
+        set v [incr (v,pbleft) $dir]
+        if {$v>=100} {
+            set dir -1
+            if {[incr (v,pbbot)]>100} { set (v,pbbot) 0 }
+        } elseif {$v<=0} {
+            set dir 1
+            if {[incr (v,pbtop)]>100} { set (v,pbtop) 0 }
+        }
+        set (after) [after 30 [list [namespace current]::CountDown $_ $dir]]
+    }
+
+    proc StartStop {_} {
+        # Start/stop countdown.
+        upvar $_ {}
+        if {$(after) != {}} {
+            after cancel $(after)
+            set (after) {}
+            return
+        }
+        CountDown $_
+    }
+    
+    proc Main {_} {
+        # Program entry point.
+        upvar $_ {}
+        variable pd
+        Text insert $(w,text_1) end "Canvas progressbars support rounded ends, tiling and labels overtop the bar.\nArbitrary canvas ops are available. Here is the source for 'progress.gui':\n\n" {} $pd(gui) code
+        set c $(w,pbleft)
+        # Create a round button to reset start/stop.
+        Canvas create oval $c {7 7 13 13} -fill Blue -width 1 -outline Black -tags o
+        $c bind o <Enter> "$c itemconf 3 -fill red; $c conf -cursor hand2"
+        $c bind o <Leave> "$c itemconf 3 -fill blue; $c conf -cursor {}"
+        $c bind o <1> "$_ StartStop"
+        CountDown $_
+    }
+
+    proc Cleanup {_} {
+        # Program cleanup.
+        upvar $_ {}
+        *catch {after cancel $(after)}
+        exit; # Exit cause this is just a demo.
+    }
+
+}
+
+style {
+    # "Style overrides for -progressbar attrs: creates image tiles, rounded, etc"
+    Toplevel {
+        @defgradients {
+            slan  {#daa520 #ffd700 -width 13 -height 13 -slant 1.0}
+            slanp {#daa520 #ffd700 -width 13 -height 13 -slant 1.0 -rotate 90}
+            chal1 {#bebebe #d3d3d3 -width 20 -height 15 -rotate 90}
+            chal2 {#bebebe #d3d3d3 -width 20 -height 15}
+            tbg { Khaki #ffffff -width 1000 -height 6 -gamma .5}
+        }
+        @deffonts {
+            bfnt {Verdana -14 bold}
+        }
+
+        @imgpulse { slanp }
+        *highlightThickness 0
+    }
+    Text { -tile ^tbg -padx 0 -pady 0 @tags {code {-foreground SteelBlue} } }
+    .pbtop {
+        -tile ^chal1
+        @@ { -progressbar {-bartile ^slan  -font ^bfnt -suffix %}}
+    }
+    .pbleft {
+        -tile ^chal2
+        @@ { -progressbar {-bartile ^slanp -font ^bfnt -suffix % -vertical 1 }}
+    }
+}
+
+{Toplevel + -title "Canvas Progressbar Demo"} {
+    {Canvas - -id pbleft -pos |l -progressbar {-vertical 1}} {}
+    {Frame + -pos *l} {
+        {Canvas - -id pbtop -pos _ -progressbar 1} {}
+        {Text - -pos * -scroll *} {}
+        {ProgressBar - -id pbbot -font ^bfnt -pos _} {}
+    }
+}
+

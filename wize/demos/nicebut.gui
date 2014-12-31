@@ -1,0 +1,35 @@
+#!/usr/bin/env wize
+{options - -blt 1} {}
+
+{style} {
+    Toplevel  {
+        @defimages {
+            mse wcspeedtouch
+            drops emb_raindrops
+        }
+        @defgradients {
+            mainbg {SteelBlue SteelBlue -width 50 -height 50 }
+        }
+        @eval {
+            font conf TkDefaultFont -size 14 -family mono -slant italic
+        }
+    }
+    Button { -image ^mse -compound right -shadow white }
+    .subfr { -pady 4 }
+    .txt { -bg Steelblue -bd 0 -highlightthickness 0  }
+}
+
+{Toplevel +} {
+    {Frame + -id subfr -subattr {-rnd 1 -pos l}} {
+        Button Step
+        Button Next
+        Button Finish
+        Button Continue
+        Button Until
+        Button Up
+        {Button - -conf {-state disabled}} Down
+    }
+    {Frame + -id txtfr -pos * -rnd "-images ^mainbg"} {
+        {Text - -id txt -pos * -focus 1 -eval { %W insert end "This is a text widget ..." }} {}
+    }
+}

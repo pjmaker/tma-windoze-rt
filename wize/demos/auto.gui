@@ -1,0 +1,12 @@
+#!/usr/bin/env wize
+
+{Toplevel +} {
+    # "Apply style to auto named gui elements"
+    style {
+        .canvas_1 { -height 50  -bg green }
+        .canvas_2 { -height 100 -bg blue }
+    }
+    Canvas {}
+    Canvas {}
+}
+

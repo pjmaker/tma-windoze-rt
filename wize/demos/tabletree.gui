@@ -1,0 +1,53 @@
+#!/usr/bin/env wize
+
+script {
+    # Demo that uses a tree for storage in a Tktable.
+    # The tree name is stored in (T,id)
+
+    proc Add-Sam {_} {
+        # Add 1 year to sams age.
+        upvar $_ {}
+        foreach t {tdata tvdata} {
+          set T $(T,$t)
+          tree op incr $T 0->sam Age
+        }
+    }
+
+    proc Add-All {_} {
+        # Add 1 year to everyones age.
+        upvar $_ {}
+        foreach t {tdata tvdata} {
+          set T $(T,$t)
+          $T incri [$T children 0]  Age
+          #foreach i [$T children 0] { $T incr $i Age }
+        }
+    }
+}
+
+{Frame + -pos _ -subpos l*/} { Button Add-Sam   Button Add-All }
+{Tabset + -pos *} {
+    {tab + -label Tktable} {
+
+        {Table - -id tdata -pos * -maketree 2 -shrink 1 -nice 1 -altedit 1} {
+            #     Name            Age Sex
+            sam   "Sam Spade"     9   M
+            bill  "Bill Gore"     17  M
+            tom   "Tom Waite"     18  M
+            mary  "Mary Mac"      19  M
+            sally "Sally Fields"  8   M
+        }
+    }
+    {tab + -label TreeView} {
+
+        {TreeView - -id tvdata -pos * -nice y -maketree 1 -istable 1 -titles {Name            Age Sex} } {
+            sam   "Sam Spade"     9   M
+            bill  "Bill Gore"     17  M
+            tom   "Tom Waite"     18  M
+            mary  "Mary Mac"      19  M
+            sally "Sally Fields"  8   M
+        }
+    }
+}
+
+
+

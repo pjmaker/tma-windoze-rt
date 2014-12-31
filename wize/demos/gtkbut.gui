@@ -1,0 +1,46 @@
+#!/usr/bin/env wize
+
+{options - -gtk 1 -pad 4,4} {}
+{Toplevel +} {
+    {#style} { * { @@ { -pad 2,2 } } }
+    {style} {
+        Label { -relief raised }
+    }
+    {Tabset + -pos *} {
+        {tab + -pos * -label Demo} {
+            {Labelframe + -id bfr -label Labelframe -subpos w -pos *} {
+                {Checkbutton} Checkbutton
+                {Radiobutton - -name rad} One
+                {Radiobutton - -name rad} Two
+                {Radiobutton - -name rad} Three
+                Button Button
+                Menubutton Menubutton
+                Label Label
+                Entry {}
+                {Text - -scroll se -conf { -width 20 -height 6}} {}
+            }
+        }
+        {tab +  -label Scales -pos * -subpos w} {
+            {Scale - -id scale1 -pos _ -horizontal 1} {}
+            {ProgressBar - -pos _ -suffix % -var (v,scale1)} {}
+            {Frame + -subpos l} {
+                {Scale - -id scale2 -conf {-from 100 -to 0}} {}
+                {TProgressbar - -vertical 1 -var  (v,scale2)} {}
+            }
+            {Radiobutton - -name prog} determinate
+            {Radiobutton - -name prog} indeterminate
+            Button Start
+            Button Stop
+        }
+        {tab + -pos * -label Combobox} {
+            {TCombobox - -pos _} {abc def ghi jkl}
+            {TCombobox - -pos _ -readonly 1} {abc def ghi jkl}
+        }
+        {tab + -pos * -label Tree} {
+            {TreeView - -treetitle Widget -titles {Class}} {}
+        }
+        {tab + -pos * -label Others} {
+            {Text} {}
+        }
+    }
+}
